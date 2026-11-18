@@ -1,0 +1,125 @@
+{
+  "scope": "Six version-identifiable packages plus additional family-level attribution; original dependency lockfile unavailable",
+  "packages": [
+    {
+      "package": "react",
+      "embeddedVersionEvidence": "18.3.1",
+      "licenseDeclaredByPackage": "MIT",
+      "textFile": "licenses/react-18.3.1.txt",
+      "tarballUrl": "https://registry.npmjs.org/react/-/react-18.3.1.tgz",
+      "licenseSha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85"
+    },
+    {
+      "package": "react-dom",
+      "embeddedVersionEvidence": "18.3.1",
+      "licenseDeclaredByPackage": "MIT",
+      "textFile": "licenses/react-dom-18.3.1.txt",
+      "tarballUrl": "https://registry.npmjs.org/react-dom/-/react-dom-18.3.1.tgz",
+      "licenseSha256": "52412d7bc7ce4157ea628bbaacb8829e0a9cb3c58f57f99176126bc8cf2bfc85"
+    },
+    {
+      "package": "react-router",
+      "embeddedVersionEvidence": "6.30.6",
+      "licenseDeclaredByPackage": "MIT",
+      "textFile": "licenses/react-router-6.30.6.txt",
+      "tarballUrl": "https://registry.npmjs.org/react-router/-/react-router-6.30.6.tgz",
+      "licenseSha256": "77c9ee6a9c5d5782fb0c50b50d101189116314c14f7df0a1b0d385fc96a7ba49"
+    },
+    {
+      "package": "react-router-dom",
+      "embeddedVersionEvidence": "6.30.6",
+      "licenseDeclaredByPackage": "MIT",
+      "textFile": "licenses/react-router-dom-6.30.6.txt",
+      "tarballUrl": "https://registry.npmjs.org/react-router-dom/-/react-router-dom-6.30.6.tgz",
+      "licenseSha256": "77c9ee6a9c5d5782fb0c50b50d101189116314c14f7df0a1b0d385fc96a7ba49"
+    },
+    {
+      "package": "@remix-run/router",
+      "embeddedVersionEvidence": "1.23.4",
+      "licenseDeclaredByPackage": "MIT",
+      "textFile": "licenses/remix-run-router-1.23.4.txt",
+      "tarballUrl": "https://registry.npmjs.org/@remix-run/router/-/router-1.23.4.tgz",
+      "licenseSha256": "77c9ee6a9c5d5782fb0c50b50d101189116314c14f7df0a1b0d385fc96a7ba49"
+    },
+    {
+      "package": "lucide-react",
+      "embeddedVersionEvidence": "1.59.0",
+      "licenseDeclaredByPackage": "ISC",
+      "textFile": "licenses/lucide-react-1.59.0.txt",
+      "tarballUrl": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.59.0.tgz",
+      "licenseSha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57"
+    }
+  ],
+  "unknown": [
+    "exact embedded query/cache package versions",
+    "exact standalone Scheduler version",
+    "complete original dependency/authoring manifest; no exhaustive component-inventory certification",
+    "exact embedded browser qrcode/dijkstrajs versions",
+    "exact original Tailwind version/configuration"
+  ],
+  "familyAttribution": [
+    {
+      "family": "TanStack Query (React binding and query/cache core)",
+      "identification": "strong family inference; exact embedded versions not established",
+      "evidence": [
+        "QueryClientProvider/useQueryClient context and exact error text",
+        "query/cache/observer implementation and Missing queryFn error"
+      ],
+      "license": "MIT",
+      "licenseFile": "licenses/tanstack-query-family-MIT.txt",
+      "upstreamLicenseUrl": "https://raw.githubusercontent.com/TanStack/query/f9e8b2cf4c296b6b23c1aead848d23fad1f67818/LICENSE",
+      "upstreamLicenseCommit": "f9e8b2cf4c296b6b23c1aead848d23fad1f67818",
+      "licenseSha256": "a405ee70c632bb938acb7ac5f210e814409b3760ea9d2329d8ed8ffcfd11a0e7",
+      "versionSpecificSecurityAudit": "not possible from the current evidence"
+    },
+    {
+      "family": "React JSX runtime and Scheduler",
+      "identification": "explicit embedded React production license headers",
+      "license": "MIT",
+      "licenseFile": "licenses/react-18.3.1.txt",
+      "versionNote": "React identifies 18.3.1; exact standalone Scheduler version is not asserted"
+    },
+    {
+      "family": "qrcode",
+      "identification": "strong source-family match from multiple distinctive code/error signatures; exact embedded version not established",
+      "evidence": [
+        "toSJISFunc",
+        "Invalid hex color:",
+        "getSymbolTotalCodewords"
+      ],
+      "license": "MIT",
+      "licenseFile": "licenses/qrcode-family-MIT.txt",
+      "licenseReferencePackageVersion": "1.5.4",
+      "referenceVersionIsNotAnEmbeddedVersionClaim": true,
+      "upstreamPackageUrl": "https://registry.npmjs.org/qrcode/1.5.4",
+      "upstreamTarball": "https://registry.npmjs.org/qrcode/-/qrcode-1.5.4.tgz",
+      "licenseSha256": "8df47c6ad9ac2c41eb9b2a72def9908959da0ede8dadd56c7b249c1bdb0c5ce6"
+    },
+    {
+      "family": "dijkstrajs",
+      "identification": "strong source-family match from multiple distinctive code/error signatures; exact embedded version not established",
+      "evidence": [
+        "Could not find a path from ",
+        "single_source_shortest_paths",
+        "extract_shortest_path_from_predecessor_list"
+      ],
+      "license": "MIT",
+      "licenseFile": "licenses/dijkstrajs-family-MIT.txt",
+      "licenseReferencePackageVersion": "1.0.3",
+      "referenceVersionIsNotAnEmbeddedVersionClaim": true,
+      "upstreamPackageUrl": "https://registry.npmjs.org/dijkstrajs/1.0.3",
+      "upstreamTarball": "https://registry.npmjs.org/dijkstrajs/-/dijkstrajs-1.0.3.tgz",
+      "licenseSha256": "c46324e45a005413535a6fb7a97e9eacd3cc6bf30335b7d5c10b8ee3af9e60c2"
+    },
+    {
+      "family": "Tailwind CSS generated utilities/preflight",
+      "identification": "family inference from tw-prefixed utility/preflight variables; original config and exact version unavailable",
+      "license": "MIT",
+      "licenseFile": "licenses/tailwindcss-family-MIT.txt",
+      "licenseReferencePackageVersion": "3.4.17",
+      "referenceVersionIsNotAnEmbeddedVersionClaim": true,
+      "upstreamTarball": "https://registry.npmjs.org/tailwindcss/-/tailwindcss-3.4.17.tgz",
+      "licenseSha256": "60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985"
+    }
+  ]
+}

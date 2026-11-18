@@ -1,0 +1,21 @@
+{
+  "reviewDate": "2026-11-18",
+  "sourceKind": "recovered compiled JavaScript with documented security patches",
+  "frontendTestsPassed": 11,
+  "focusedBackendTestsPassed": 6,
+  "browserChecksPassed": 13,
+  "baselineScreenshotTextPairs": 11,
+  "realDisposablePostgresSmokePassed": true,
+  "freshBackendDependencyInstallTested": false,
+  "openToolingAdvisories": 1,
+  "versionMatchedEmbeddedRouterAdvisories": 2,
+  "completeEmbeddedInventory": false,
+  "publicationApproved": false,
+  "published": false,
+  "classificationUpdate": "publication gates distinguished from operational readiness",
+  "ownerOriginalWorkRightsConfirmed": true,
+  "technicalSourcePreparationChecksSatisfiedWithinScope": true,
+  "exactPackageLicenseTexts": 6,
+  "additionalFamilyReferenceMITTexts": 4,
+  "applicationCodeChangedInThisUpdate": false
+}

@@ -1,0 +1,12 @@
+{
+  "reason": "Account-bound draft and query-cache cleanup on logout, invalid session and login; original source remains as provenance only; cross-tab identity reset",
+  "modifiedFunctions": [
+    {
+      "module": "application",
+      "symbol": "Ub",
+      "originalSha256": "952f9a1cda1404c6dfcae590911a8fab481a3cdafb0f16ffea939d85bc919416",
+      "patchedSha256": "abc998466ec245f868114105ab911d99d7cb439533e463236e8f4d82ae67eb23"
+    }
+  ],
+  "newModule": "src/security/session-privacy.js"
+}

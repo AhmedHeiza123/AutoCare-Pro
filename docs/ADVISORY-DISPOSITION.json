@@ -1,0 +1,43 @@
+{
+  "reviewDate": "2026-11-18",
+  "kind": "Project-specific technical triage, not a formal vulnerability certification",
+  "advisories": [
+    {
+      "id": "GHSA-fc5q-39xc-vjpf",
+      "package": "picomatch",
+      "version": "4.0.7",
+      "upstreamSeverity": "high",
+      "scope": "Vite development/build dependency",
+      "status": "open; no current upstream patched release identified",
+      "observedExposure": "No application endpoint accepting arbitrary glob patterns identified. Run tooling only with trusted projects/patterns and local binding.",
+      "codePublicationBlockerByItself": false,
+      "fixed": false,
+      "source": "https://github.com/advisories/GHSA-fc5q-39xc-vjpf"
+    },
+    {
+      "id": "GHSA-337j-9hxr-rhxg",
+      "package": "react-router",
+      "version": "6.30.6",
+      "upstreamSeverity": "moderate",
+      "scope": "SSR hydration with specific attacker-influenced error state",
+      "status": "Not applicable to the observed declarative client-side mode; reassess if rendering mode changes",
+      "evidence": "application.js mounts with createRoot and browser routing; supplier advisory explicitly excludes declarative mode",
+      "codePublicationBlockerByItself": false,
+      "vendorUpgraded": false,
+      "source": "https://github.com/advisories/GHSA-337j-9hxr-rhxg"
+    },
+    {
+      "id": "GHSA-wrjc-x8rr-h8h6",
+      "package": "react-router",
+      "version": "6.30.6",
+      "upstreamSeverity": "moderate",
+      "scope": "Attacker-controlled navigation destinations",
+      "status": "Conditional applicability remains under review; no working application exploit established",
+      "codePublicationBlockerByItself": false,
+      "vendorUpgraded": false,
+      "source": "https://github.com/advisories/GHSA-wrjc-x8rr-h8h6"
+    }
+  ],
+  "noAdvisorySuppressionAdded": true,
+  "productionApproval": false
+}

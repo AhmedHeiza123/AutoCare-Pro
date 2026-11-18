@@ -1,0 +1,44 @@
+# Local credentials and configuration
+.env
+.env.*
+!.env.example
+**/secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+*.pass
+
+# Installed data, attachments, exports and backups
+pgdata/
+data/
+**/storage/
+**/backups/
+*.dump
+*.bak
+*.db
+*.sqlite
+*.sqlite3
+*.log
+AutoCarePro_Backup_*
+
+# Bundled dependencies and generated assets belong in reviewed release artifacts
+runtime/
+node_modules/
+**/dist/
+*.map
+*.zip
+*.7z
+
+# Python and editor files
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
