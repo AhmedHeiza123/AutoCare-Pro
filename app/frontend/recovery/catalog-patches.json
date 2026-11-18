@@ -1,0 +1,64 @@
+{
+  "reason": "Categorized repair settings and bilingual repair names",
+  "statements": [
+    {
+      "module": "application",
+      "symbol": "ww",
+      "type": "FunctionDeclaration",
+      "originalSha256": "bdbbcc7c1802978dc5e4453b744b28ef6f0e7605e4bf3a9d17a466be5c25310f",
+      "patchedSha256": "0a6e3fa2b5eb1ee4febe5b48c690371bb9e0c616bdf81a5a443b8bf179767052"
+    },
+    {
+      "module": "application",
+      "symbol": "Lp",
+      "type": "FunctionDeclaration",
+      "originalSha256": "b9fe0285066ded5207aace50f6faf74780a569e88500de569f95451c756e49a8",
+      "patchedSha256": "e78afe5505a1e9d7f8012cccf7465f574d50c6bb34cfd83e320e3e36b0772436"
+    },
+    {
+      "module": "application",
+      "symbol": "Ww",
+      "type": "FunctionDeclaration",
+      "originalSha256": "6d48562176c74f89c3748ec2b4d3c189736c2add3a77c0c53ea5173bc9edd5a0",
+      "patchedSha256": "74e32f242c3a753c396604d61e99c3b94a4c6dd1580fda15614ddf0558b65d25"
+    },
+    {
+      "module": "application",
+      "symbol": "ek",
+      "type": "FunctionDeclaration",
+      "originalSha256": "82bd8b755cf6a9a3db6f2b9f4d4b54a24791afbae6dd0ef47279fe731c1dbc8d",
+      "patchedSha256": "b8579dde7bf4787b4af3ebc3bf6ad61804b59e4d5eb1c005b436e65c88837ad8"
+    },
+    {
+      "module": "application",
+      "symbol": "catalogNames",
+      "type": "FunctionDeclaration",
+      "patchedSha256": "f537c7c8552098acfc06e4b3ff89bebc6acb0354bf9dda298285a719989aa6ce"
+    },
+    {
+      "module": "application",
+      "symbol": "catalogOptions",
+      "type": "FunctionDeclaration",
+      "patchedSha256": "cea50055c647f671b9c0c80753b13b48154d3be72e08625cdf83f726294adcf5"
+    },
+    {
+      "module": "application",
+      "symbol": "repairCatalogGroups",
+      "type": "FunctionDeclaration",
+      "patchedSha256": "0562e4e8a6c6e4e675916ae70b4c92783a9a712f0289e8cbaa479c1a74fd744e"
+    },
+    {
+      "module": "localization",
+      "symbol": "bu",
+      "type": "VariableDeclaration",
+      "originalSha256": "471d892c63a04a814041fb0daa91a524f2ef87533a7d614516d04a9e51813a0a",
+      "patchedSha256": "fa2a28ce1b7d4e577332644c42c775b3b2ce5b38dffced1a76770df81e0ba987"
+    },
+    {
+      "module": "localization",
+      "symbol": "repairLegacyTranslation",
+      "type": "FunctionDeclaration",
+      "patchedSha256": "cc0d898346cd872f957776f1a223a0d3a2c11d52e9daec25d8dcbb58dbff58de"
+    }
+  ]
+}

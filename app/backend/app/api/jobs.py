@@ -58,9 +58,14 @@ def add_history(db: DbSession, job: VehicleVisit, to: str, user: User | None, re
 # ---- templates -------------------------------------------------------------
 @router.get("/templates")
 def templates(_: User = Depends(require("visits.read")), db: DbSession = Depends(get_db, scope="function")):
-    catalog = [x for x in cfg.get_section(db, "repair_catalog")["items"] if x["active"]]
-    repairs = {category: [x["name"] for x in catalog if x["category"] == category] for category in REPAIR_TEMPLATES}
-    return {"repairs": repairs, "repair_catalog": catalog, "inspections": INSPECTION_TEMPLATES,
+    settings = cfg.get_section(db, "repair_catalog")
+    catalog = [item for item in settings["items"] if item["active"]]
+    custom = settings["custom_categories"]
+    repairs = {category: [] for category in (*REPAIR_TEMPLATES, *(item["key"] for item in custom))}
+    for item in catalog:
+        if item["category"] in repairs:
+            repairs[item["category"]].append(item["name"])
+    return {"repairs": repairs, "repair_catalog": catalog, "repair_categories": custom, "inspections": INSPECTION_TEMPLATES,
             "condition_points": CONDITION_POINTS, "dashboard_lights": DASHBOARD_LIGHTS, "fuel_levels": FUEL_LEVELS, "statuses": STATUSES}
 
 

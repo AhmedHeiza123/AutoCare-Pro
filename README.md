@@ -21,6 +21,8 @@ AutoCare Pro connects customer and vehicle records, repair work, quotations, par
 | Delivery and aftercare | Quality checks, readiness, audited exceptions, warranties/claims and reminders |
 | Administration | Five standard roles, server-side permissions, audit, settings, attachments, reports and recovery |
 
+The repair catalog supports custom categories and Arabic and English names for each repair option. The job card uses the interface language when presenting those options. Labor charges continue to use the hours and hourly rate entered on the repair operation.
+
 Parts purchasing is job-linked. A warehouse inventory system, payment gateway and outbound WhatsApp/SMS integration are not claimed. Approvals and payments are recorded business workflows.
 
 ## Architecture and stack

@@ -29,24 +29,36 @@ function canonical(value){
 const parseModule=s=>parse(s,{sourceType:'module'}).program;
 const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
 
-test('recovery retains original statements except explicitly hash-pinned security patches',()=>{
+test('recovery retains original statements except explicitly hash-pinned changes',()=>{
   const originalSource=fs.readFileSync(path.join(baseline,originalJs),'utf8');
-  const expected=canonical(parseModule(originalSource).body);
+  const originalBody=parseModule(originalSource).body;
+  const expected=canonical(originalBody);
   const patches=JSON.parse(fs.readFileSync(path.join(root,'recovery/security-patches.json'),'utf8'));
+  const catalog=JSON.parse(fs.readFileSync(path.join(root,'recovery/catalog-patches.json'),'utf8'));
+  const find=(body,{symbol,type})=>body.find(n=>n.type===type&&(
+    n.id?.name===symbol || n.declarations?.some(entry=>entry.id.name===symbol)
+  ));
   const recovered=[];
   for(const name of ['runtime','localization','application']){
     const file=path.join(root,`src/recovered/${name}.js`);
     assert.ok(fs.existsSync(file),`Missing recovered ${name} module`);
     const ast=parseModule(fs.readFileSync(file,'utf8'));
     const source=fs.readFileSync(file,'utf8');
-    for(const patch of patches.modifiedFunctions){
+    const tracked=[...patches.modifiedFunctions.map(patch=>({...patch,type:'FunctionDeclaration'})),...catalog.statements];
+    for(const patch of tracked){
       if(patch.module!==name)continue;
-      const old=parseModule(originalSource).body.find(n=>n.type==='FunctionDeclaration'&&n.id.name===patch.symbol);
-      const current=ast.body.find(n=>n.type==='FunctionDeclaration'&&n.id.name===patch.symbol);
-      assert.ok(old&&current,'Pinned security-patched function missing');
-      assert.equal(hash(originalSource.slice(old.start,old.end)),patch.originalSha256,'Unexpected original security patch input');
-      assert.equal(hash(source.slice(current.start,current.end)),patch.patchedSha256,'Security patch differs from reviewed content');
-      ast.body[ast.body.indexOf(current)]=old;
+      const old=find(originalBody,patch);
+      const current=find(ast.body,patch);
+      assert.ok(current,`Pinned statement missing: ${patch.symbol}`);
+      assert.equal(hash(source.slice(current.start,current.end)),patch.patchedSha256,`Reviewed change differs: ${patch.symbol}`);
+      if(patch.originalSha256){
+        assert.ok(old,`Original statement missing: ${patch.symbol}`);
+        assert.equal(hash(originalSource.slice(old.start,old.end)),patch.originalSha256,`Original statement differs: ${patch.symbol}`);
+        ast.body[ast.body.indexOf(current)]=old;
+      }else{
+        assert.equal(old,undefined,`Added statement already existed: ${patch.symbol}`);
+        ast.body.splice(ast.body.indexOf(current),1);
+      }
     }
     recovered.push(...ast.body.filter(n=>!['ImportDeclaration','ExportNamedDeclaration'].includes(n.type)));
   }

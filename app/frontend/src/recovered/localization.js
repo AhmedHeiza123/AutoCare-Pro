@@ -994,7 +994,20 @@ const Ab = A(uy),
     "لا يمكن التسليم وإغلاق أمر الشغل قبل إصدار الفاتورة": "Issue the invoice before delivering and closing the job",
     "لا يمكن إلغاء فاتورة أمر تم تسليمه؛ أصدر إشعاراً دائناً أو أعد فتح الأمر أولاً": "A delivered job must retain its invoice; issue a credit note or reopen the job first",
     "لا يمكن التسليم وإغلاق أمر الشغل قبل إصدار الفاتورة: {0}": "Issue the invoice before delivering and closing the job: {0}",
-    "إعداد الأعطال والأسعار المبدئية": "Repair catalog and initial estimates",
+    "تصنيفات الإصلاح":"Repair categories",
+"اسم التصنيف الجديد":"New category name",
+"إضافة تصنيف":"Add category",
+"اسم التصنيف مستخدم بالفعل":"That category name is already in use",
+"اسم العطل أو الخدمة بالعربي":"Repair or service name (Arabic)",
+"اسم العطل أو الخدمة بالإنجليزي":"Repair or service name (English)",
+"اكتب الاسمين للبنود الجديدة وراجع الأسماء المكررة داخل التصنيف.":"Enter both names for new items and check for duplicate names within each category.",
+"كتالوج الإصلاحات":"Repair Catalog",
+"نظّم بنود الإصلاح الجاهزة للاختيار في أمر الشغل حسب التصنيف.":"Group repair options by category so staff can select them on a job card.",
+"لا توجد بنود في هذا التصنيف":"No repair options in this category",
+"راجع الأسماء الفارغة أو المكررة داخل التصنيف قبل الحفظ.":"Check for empty or duplicate names within each category before saving.",
+"حفظ كتالوج الإصلاحات":"Save repair catalog",
+"تم حفظ كتالوج الإصلاحات":"Repair catalog saved",
+"إعداد الأعطال والأسعار المبدئية": "Repair catalog and initial estimates",
     "أسعار تقديرية للمراجعة فقط؛ لا تغيّر أجور الإصلاح أو الفواتير تلقائيًا.": "Estimates for review only; they do not automatically change labor charges or invoices.",
     "بحث عن عطل أو خدمة": "Search repairs or services",
     "عرض {0} من {1} بند": "Showing {0} of {1} items",
@@ -1515,4 +1528,5 @@ function py(e) {
   }
   t !== Et && window.location.reload();
 }
-export { Ab, Et, qi, $t, l, Z, J, qb, py };
+function repairLegacyTranslation(value) { return bu[value] ?? ""; }
+export { repairLegacyTranslation, Ab, Et, qi, $t, l, Z, J, qb, py };

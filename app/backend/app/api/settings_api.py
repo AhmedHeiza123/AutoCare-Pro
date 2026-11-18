@@ -3,7 +3,7 @@ import re
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session as DbSession
 
 from app.api.deps import client_ip, current_user, require
@@ -13,6 +13,7 @@ from app.db import get_db
 from app.models import AppSetting
 from app.models.auth import User
 from app.services import settings as svc
+from app.services.templates import REPAIR_TEMPLATES
 
 router = APIRouter(prefix="/api", tags=["settings"])
 
@@ -83,6 +84,8 @@ class RepairCatalogItem(BaseModel):
     id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,80}$")
     category: str
     name: str = Field(min_length=1, max_length=200)
+    name_ar: str | None = Field(None, min_length=1, max_length=200)
+    name_en: str | None = Field(None, min_length=1, max_length=200)
     initial_price: Decimal | None = Field(None, ge=0, max_digits=12, decimal_places=2)
     active: bool = True
 
@@ -91,17 +94,35 @@ class RepairCatalogItem(BaseModel):
     def trim_name(cls, value):
         return value.strip() if isinstance(value, str) else value
 
-    @field_validator("category")
+    @field_validator("name_ar", "name_en", mode="before")
     @classmethod
-    def known_category(cls, value):
-        from app.services.templates import REPAIR_TEMPLATES
-        if value not in REPAIR_TEMPLATES:
-            raise ValueError("unknown repair category")
-        return value
+    def trim_translation(cls, value):
+        return (value.strip() or None) if isinstance(value, str) else value
+
+class CustomRepairCategory(BaseModel):
+    key: str = Field(pattern=r"^custom-[a-z0-9-]{1,43}$")
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def trim_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
 
 
 class RepairCatalog(BaseModel):
     items: list[RepairCatalogItem] = Field(max_length=500)
+    custom_categories: list[CustomRepairCategory] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_categories(self):
+        keys = {category.key for category in self.custom_categories}
+        names = {category.name.casefold() for category in self.custom_categories}
+        if len(keys) != len(self.custom_categories) or len(names) != len(self.custom_categories):
+            raise ValueError("duplicate repair category")
+        known = set(REPAIR_TEMPLATES) | keys
+        if any(item.category not in known for item in self.items):
+            raise ValueError("unknown repair category")
+        return self
 
     @field_validator("items")
     @classmethod
@@ -110,6 +131,11 @@ class RepairCatalog(BaseModel):
             raise ValueError("duplicate id")
         if len({(x.category, x.name.casefold()) for x in items}) != len(items):
             raise ValueError("duplicate name in category")
+        for field in ("name_ar", "name_en"):
+            names = [(item.category, value.casefold()) for item in items
+                     if (value := getattr(item, field))]
+            if len(set(names)) != len(names):
+                raise ValueError("duplicate translation in category")
         return items
 
 
@@ -147,6 +173,11 @@ def put_section(section: str, body: dict, request: Request, user: User = Depends
     except Exception as e:  # noqa: BLE001 - pydantic ValidationError
         raise AppError("تأكد من القيم المدخلة في الإعدادات", 422, "bad_settings") from e
     before = svc.get_section(db, section)
+    if section == "repair_catalog":
+        stored = {category["key"] for category in before.get("custom_categories", [])}
+        submitted = {category["key"] for category in clean["custom_categories"]}
+        if not stored <= submitted:
+            raise AppError("أعد تحميل كتالوج الإصلاحات قبل الحفظ", 409, "stale_catalog")
     svc.set_section(db, section, clean)
     audit(db, user, "settings.update", "settings", section, before=before, after=clean, ip=client_ip(request))
     return clean

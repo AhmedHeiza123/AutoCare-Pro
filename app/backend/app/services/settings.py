@@ -8,7 +8,7 @@ from app.models import AppSetting
 from app.services.templates import REPAIR_TEMPLATES
 
 DEFAULTS: dict[str, dict] = {
-    "repair_catalog": {"items": [{"id": f"{category}-{i+1}", "category": category, "name": name, "initial_price": None, "active": True} for category, names in REPAIR_TEMPLATES.items() for i, name in enumerate(names)]},
+    "repair_catalog": {"custom_categories": [], "items": [{"id": f"{category}-{i+1}", "category": category, "name": name, "initial_price": None, "active": True} for category, names in REPAIR_TEMPLATES.items() for i, name in enumerate(names)]},
     "workshop": {"name": "ورشة السيارات", "name_en": "", "address": "", "phone": "", "email": "", "tax_number": ""},
     "finance": {
         "currency": "QAR", "default_tax_rate": "0", "invoice_prefix": "INV", "credit_prefix": "CN", "job_prefix": "JOB",

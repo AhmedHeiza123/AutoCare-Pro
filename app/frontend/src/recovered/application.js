@@ -2,7 +2,7 @@
 // Do not treat inferred file boundaries as the original authoring architecture.
 import { clearPrivateClientState } from '../security/session-privacy.js';
 import { w, sf, s, de, c0, D0, W, V, ec, yx, Xn, es, Ds, hu, Aj, le, qj, Jj, re, Mx, sa, hb, cp, pb, mi, yl, fb, Qn, mb, xb, Bx, un, Kl, pu, Wx, Gx, vl, Ii, gb, Ke, yb, at, jl, fu, mu, Le, dp, bl, vb, xu, jb, bb, wb, Xc, kb, $i, Nb, Vl, _b, wl, bg, gu, Cb, Ai, Sb, Eb, up, Pb, Wl, Mg, Fg, ts, fn, Oi, Rb, Ag, Mb, yu, et, xi, Wn, Tb, ra, rr, Fb, Lb, Db, zb, Or, Js, Hl, ed, sy, vu, Ib, Ms, ju, $b, ns, ia } from './runtime.js';
-import { Ab, Et, qi, $t, l, Z, J, qb, py } from './localization.js';
+import { Ab, Et, qi, $t, l, Z, J, qb, py, repairLegacyTranslation } from './localization.js';
 class Sr extends Error {
   constructor(t, n, r, i) {
     super(r), this.status = t, this.code = n, this.data = i;
@@ -7701,7 +7701,7 @@ function ww({
       className: "space-y-3",
       children: e.operations.map(I => {
         var ut, O;
-        const Te = Er(I.category),
+        const Te = repairCatalogGroups(n?.repair_categories).find(group => group.key === I.category),
           st = (Te == null ? void 0 : Te.icon) ?? ns;
         return s.jsxs("li", {
           className: "flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 p-4",
@@ -7845,11 +7845,7 @@ function ww({
         children: l("إضافة عملية")
       }), s.jsx("div", {
         className: "grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-7",
-        children: Hn.map(({
-          key: I,
-          label: Te,
-          icon: st
-        }) => s.jsxs("button", {
+        children: repairCatalogGroups(n?.repair_categories).map(({key:I,label:Te,icon:st}) => s.jsxs("button", {
           type: "button",
           "aria-pressed": a === I,
           onClick: () => o(a === I ? "" : I),
@@ -7860,21 +7856,15 @@ function ww({
         }, I))
       }), a && s.jsx("div", {
         className: "flex flex-wrap gap-2",
-        children: ((n == null ? void 0 : n.repairs[a]) ?? []).map(I => s.jsx("button", {
+        children: catalogOptions(n,a).map(I=>s.jsx("button", {
           type: "button",
           onClick: () => d({
             ...c,
-            description: J(I)
+            description: I.label
           }),
           className: "min-h-[44px] rounded-xl bg-brand-soft px-3 font-semibold text-brand",
-          children: J(I)
-        }, I))
-      }), (u == null ? void 0 : u.initial_price) != null && s.jsxs("p", {
-        className: "rounded-xl bg-brand-soft p-3 text-sm font-semibold",
-        children: [Z("تقدير مبدئي للمراجعة: {0} {1}", u.initial_price, ((X = i.data) == null ? void 0 : X.finance.currency) ?? ""), s.jsx("span", {
-          className: "mt-1 block text-xs font-normal",
-          children: l("لا يُضاف هذا التقدير إلى الفاتورة تلقائيًا.")
-        })]
+          children: I.label
+        }, I.key))
       }), s.jsx(E, {
         label: l("الوصف"),
         children: s.jsx("input", {
@@ -10605,174 +10595,124 @@ function Vw() {
     })]
   });
 }
-function Lp(e) {
-  return e.length <= 500 && e.every(t => t.name.trim().length > 0 && t.name.trim().length <= 200 && (t.initial_price === null || /^\d{1,10}(\.\d{1,2})?$/.test(t.initial_price))) && new Set(e.map(t => `${t.category}:${t.name.trim().toLocaleLowerCase()}`)).size === e.length;
+function catalogNames(row) {
+  const legacy = row.name ?? '';
+  const legacyArabic = /[\u0600-\u06ff]/.test(legacy);
+  return {...row,
+    name_ar:row.name_ar ?? (legacyArabic ? legacy : ''),
+    name_en:row.name_en ?? (legacyArabic ? repairLegacyTranslation(legacy) : legacy)
+  };
 }
-function Ww({
-  items: e,
-  currency: t
-}) {
-  var j;
-  const [n, r] = w.useState(e),
-    [i, a] = w.useState(""),
-    [o, c] = w.useState(""),
-    [d, u] = w.useState(!1),
-    h = de(),
-    p = V({
-      mutationFn: () => M.put("/api/settings/repair_catalog", {
-        items: n.map(v => ({
-          ...v,
-          name: v.name.trim()
-        }))
-      }),
-      onSuccess: v => {
-        r(v.items), u(!1), h.invalidateQueries({
-          queryKey: ["settings"]
-        }), h.invalidateQueries({
-          queryKey: ["templates"]
-        });
-      }
-    }),
-    m = (v, N) => {
-      r(x => x.map(f => f.id === v ? {
-        ...f,
-        ...N
-      } : f)), u(!0), p.reset();
-    },
-    y = n.filter(v => (!i || v.category === i) && `${v.name} ${J(v.name)}`.toLocaleLowerCase().includes(o.trim().toLocaleLowerCase()));
-  return s.jsx("div", {
-    id: "repair-catalog",
-    className: "scroll-mt-24",
-    children: s.jsxs(B, {
-      title: l("إعداد الأعطال والأسعار المبدئية"),
-      children: [s.jsx("p", {
-        className: "mb-4 text-sm text-slate-600",
-        children: l("أسعار تقديرية للمراجعة فقط؛ لا تغيّر أجور الإصلاح أو الفواتير تلقائيًا.")
-      }), s.jsxs("div", {
-        className: "grid gap-3 sm:grid-cols-2",
-        children: [s.jsx(E, {
-          label: l("بحث عن عطل أو خدمة"),
-          children: s.jsxs("div", {
-            className: "flex items-center gap-2",
-            children: [s.jsx(Wn, {
-              size: 18
-            }), s.jsx("input", {
-              value: o,
-              onChange: v => c(v.target.value)
-            })]
-          })
-        }), s.jsx(E, {
-          label: l("نوع العطل"),
-          children: s.jsxs("select", {
-            value: i,
-            onChange: v => a(v.target.value),
-            children: [s.jsx("option", {
-              value: "",
-              children: l("الكل")
-            }), Hn.map(v => s.jsx("option", {
-              value: v.key,
-              children: v.label
-            }, v.key))]
-          })
-        })]
-      }), s.jsxs("div", {
-        className: "my-4 flex flex-wrap items-center justify-between gap-3",
-        children: [s.jsx("span", {
-          className: "font-semibold text-slate-600",
-          children: Z("عرض {0} من {1} بند", y.length, n.length)
-        }), s.jsx(P, {
-          kind: "secondary",
-          icon: ts,
-          disabled: p.isPending || n.length >= 500,
-          onClick: () => {
-            r([...n, {
-              id: crypto.randomUUID(),
-              category: i || "engine",
-              name: "",
-              initial_price: null,
-              active: !0
-            }]), c(""), u(!0), p.reset();
-          },
-          children: l("إضافة عطل أو خدمة")
-        })]
-      }), s.jsx("div", {
-        className: "max-h-[640px] space-y-3 overflow-y-auto pe-1",
-        children: y.map(v => s.jsxs("div", {
-          className: `grid gap-3 rounded-2xl border p-4 md:grid-cols-[2fr_1fr_1fr_auto] ${v.active ? "border-slate-200 bg-slate-50" : "border-slate-200 bg-slate-100"}`,
-          children: [s.jsx(E, {
-            label: l("اسم العطل أو الخدمة"),
-            children: s.jsx("input", {
-              maxLength: 200,
-              value: v.name,
-              disabled: p.isPending,
-              onChange: N => m(v.id, {
-                name: N.target.value
-              })
-            })
-          }), s.jsx(E, {
-            label: l("التصنيف"),
-            children: s.jsx("select", {
-              value: v.category,
-              disabled: p.isPending,
-              onChange: N => m(v.id, {
-                category: N.target.value
-              }),
-              children: Hn.map(N => s.jsx("option", {
-                value: N.key,
-                children: N.label
-              }, N.key))
-            })
-          }), s.jsx(E, {
-            label: Z("السعر المبدئي ({0})", t),
-            children: s.jsx("input", {
-              type: "number",
-              min: "0",
-              max: "9999999999.99",
-              step: "0.01",
-              dir: "ltr",
-              value: v.initial_price ?? "",
-              placeholder: l("غير محدد"),
-              disabled: p.isPending,
-              onChange: N => m(v.id, {
-                initial_price: N.target.value === "" ? null : N.target.value
-              })
-            })
-          }), s.jsxs("label", {
-            className: "flex min-h-[48px] items-center gap-2 self-end font-semibold",
-            children: [s.jsx("input", {
-              type: "checkbox",
-              className: "!h-5 !w-5",
-              checked: v.active,
-              disabled: p.isPending,
-              onChange: N => m(v.id, {
-                active: N.target.checked
-              })
-            }), l("مفعّل")]
-          })]
-        }, v.id))
-      }), !y.length && s.jsx("p", {
-        className: "py-5 text-slate-500",
-        children: l("لا توجد بنود مطابقة للبحث")
-      }), s.jsxs("div", {
-        className: "mt-4 border-t pt-4",
-        children: [s.jsx($, {
-          message: (j = p.error) == null ? void 0 : j.message
-        }), d && !Lp(n) && s.jsx("p", {
-          className: "mb-2 text-sm text-bad",
-          children: l("راجع الأسماء المكررة أو الفارغة والأسعار غير الصحيحة قبل الحفظ.")
-        }), s.jsx(P, {
-          icon: et,
-          disabled: !d || p.isPending || !Lp(n),
-          onClick: () => p.mutate(),
-          children: p.isPending ? l("جارٍ الحفظ…") : l("حفظ الأعطال والأسعار")
-        }), p.isSuccess && s.jsx("p", {
-          role: "status",
-          className: "mt-2 font-bold text-ok",
-          children: l("تم حفظ قائمة الأعطال والأسعار المبدئية")
-        })]
-      })]
-    })
+function catalogOptions(templates,category) {
+  if (templates?.repair_catalog) return templates.repair_catalog
+    .filter(row=>row.active&&row.category===category)
+    .map(row=>({key:row.id,label:(Et==='ar'?row.name_ar:row.name_en)||J(row.name)}));
+  return (templates?.repairs?.[category]??[]).map(name=>({key:name,label:J(name)}));
+}
+function Lp(items) {
+  const keys = field => items.flatMap(row=>{
+    const value=row[field].trim().toLocaleLowerCase();
+    return value?[row.category+':'+value]:[];
   });
+  return items.length<=500 && items.every(row=>
+    (row.name || (row.name_ar.trim() && row.name_en.trim())) &&
+    (row.name_ar.trim() || row.name_en.trim()) && row.name_ar.length<=200 && row.name_en.length<=200
+  ) && ['name_ar','name_en'].every(field=>{
+    const names=keys(field);
+    return new Set(names).size===names.length;
+  });
+}
+function repairCatalogGroups(custom = []) {
+  return [...Hn, ...custom.map(group => ({key:group.key, label:group.name, icon:ns}))];
+}
+function Ww({items, customCategories = []}) {
+  const [rows,setRows] = w.useState(()=>items.map(catalogNames));
+  const [custom,setCustom] = w.useState(customCategories);
+  const [active,setActive] = w.useState(Hn[0].key);
+  const [name,setName] = w.useState('');
+  const [search,setSearch] = w.useState('');
+  const [dirty,setDirty] = w.useState(false);
+  const queries = de();
+  const save = V({
+    mutationFn:()=>M.put('/api/settings/repair_catalog',{
+      custom_categories:custom,
+      items:rows.map(row=>({...row,name:row.name_ar.trim()||row.name_en.trim(),name_ar:row.name_ar.trim()||null,name_en:row.name_en.trim()||null}))
+    }),
+    onSuccess:result=>{
+      setRows(result.items.map(catalogNames));
+      setCustom(result.custom_categories ?? []);
+      setDirty(false);
+      queries.invalidateQueries({queryKey:['settings']});
+      queries.invalidateQueries({queryKey:['templates']});
+    }
+  });
+  const groups = repairCatalogGroups(custom);
+  const selected = groups.find(group=>group.key===active) ?? groups[0];
+  const query = search.trim().toLocaleLowerCase();
+  const entries = rows.filter(row=>row.category===selected.key && [row.name_ar,row.name_en,row.name].some(value=>value.toLocaleLowerCase().includes(query)));
+  const newName = name.trim();
+  const duplicate = groups.some(group=>group.label.toLocaleLowerCase()===newName.toLocaleLowerCase());
+  const addCategory = ()=>{
+    if(!newName||duplicate||custom.length>=100||save.isPending) return;
+    const key='custom-'+crypto.randomUUID();
+    setCustom(current=>[...current,{key,name:newName}]);
+    setActive(key);
+    setName('');
+    setSearch('');
+    setDirty(true);
+    save.reset();
+  };
+  const change = (id,updates)=>{
+    setRows(current=>current.map(row=>row.id===id?{...row,...updates}:row));
+    setDirty(true);
+    save.reset();
+  };
+  const addItem = ()=>{
+    setRows(current=>[...current,{id:crypto.randomUUID(),category:selected.key,name:'',name_ar:'',name_en:'',initial_price:null,active:true}]);
+    setSearch('');
+    setDirty(true);
+    save.reset();
+  };
+  return s.jsx('div',{id:'repair-catalog',className:'scroll-mt-24',children:s.jsxs(B,{title:l('كتالوج الإصلاحات'),children:[
+    s.jsx('p',{className:'mb-5 text-sm text-slate-600',children:l('نظّم بنود الإصلاح الجاهزة للاختيار في أمر الشغل حسب التصنيف.')}),
+    s.jsxs('div',{className:'grid gap-4 sm:grid-cols-3',children:[
+      s.jsxs('aside',{className:'rounded-2xl border border-slate-200 bg-slate-50 p-3',children:[
+        s.jsx('h4',{className:'mb-3 text-lg font-extrabold',children:l('تصنيفات الإصلاح')}),
+        s.jsx('nav',{'aria-label':l('تصنيفات الإصلاح'),className:'space-y-2 overflow-y-auto',style:{maxHeight:'20rem'},children:groups.map(group=>s.jsx('button',{
+          type:'button','aria-pressed':selected.key===group.key,
+          className:'w-full rounded-xl px-3 py-2 text-start font-semibold '+(selected.key===group.key?'bg-brand-soft text-brand':'bg-white text-slate-600'),
+          onClick:()=>{setActive(group.key);setSearch('');},children:group.label
+        },group.key))}),
+        s.jsxs('div',{className:'mt-4 space-y-2 border-t border-slate-200 pt-3',children:[
+          s.jsx(E,{label:l('اسم التصنيف الجديد'),children:s.jsx('input',{value:name,maxLength:80,onChange:event=>setName(event.target.value),onKeyDown:event=>{if(event.key==='Enter'){event.preventDefault();addCategory();}}})}),
+          duplicate && s.jsx('p',{className:'text-sm text-bad',children:l('اسم التصنيف مستخدم بالفعل')}),
+          s.jsx(P,{kind:'secondary',icon:ts,disabled:!newName||duplicate||custom.length>=100||save.isPending,onClick:addCategory,children:l('إضافة تصنيف')})
+        ]})
+      ]}),
+      s.jsxs('section',{className:'min-w-0 rounded-2xl border border-slate-200 p-4 sm:col-span-2',children:[
+        s.jsxs('div',{className:'mb-4 flex flex-wrap items-center justify-between gap-3',children:[
+          s.jsx('h4',{className:'text-xl font-extrabold',children:selected.label}),
+          s.jsx(P,{kind:'secondary',icon:ts,disabled:save.isPending||rows.length>=500,onClick:addItem,children:l('إضافة عطل أو خدمة')})
+        ]}),
+        s.jsx(E,{label:l('بحث عن عطل أو خدمة'),children:s.jsx('input',{value:search,onChange:event=>setSearch(event.target.value)})}),
+        entries.length?s.jsx('div',{className:'mt-4 space-y-3',children:entries.map(row=>s.jsxs('div',{className:'space-y-3 rounded-xl border border-slate-200 p-3',children:[
+          s.jsxs('div',{className:'grid gap-3 sm:grid-cols-2',children:[
+            s.jsx(E,{label:l('اسم العطل أو الخدمة بالعربي'),children:s.jsx('input',{maxLength:200,dir:'rtl',lang:'ar',value:row.name_ar,disabled:save.isPending,onChange:event=>change(row.id,{name_ar:event.target.value})})}),
+            s.jsx(E,{label:l('اسم العطل أو الخدمة بالإنجليزي'),children:s.jsx('input',{maxLength:200,dir:'ltr',lang:'en',value:row.name_en,disabled:save.isPending,onChange:event=>change(row.id,{name_en:event.target.value})})})
+          ]}), s.jsxs('div',{className:'grid items-end gap-3 sm:grid-cols-2',children:[
+          s.jsx(E,{label:l('التصنيف'),children:s.jsx('select',{value:row.category,disabled:save.isPending,onChange:event=>change(row.id,{category:event.target.value}),children:groups.map(group=>s.jsx('option',{value:group.key,children:group.label},group.key))})}),
+          s.jsxs('label',{className:'flex min-h-[44px] items-center gap-2 font-semibold',children:[s.jsx('input',{type:'checkbox',className:'!h-5 !w-5',checked:row.active,disabled:save.isPending,onChange:event=>change(row.id,{active:event.target.checked})}),l('مفعّل')]})
+          ]})
+        ]},row.id))}):s.jsx('p',{className:'py-4 text-sm text-slate-500',children:l(query?'لا توجد بنود مطابقة للبحث':'لا توجد بنود في هذا التصنيف')})
+      ]})
+    ]}),
+    s.jsxs('div',{className:'mt-5 border-t pt-4',children:[
+      s.jsx($,{message:save.error?.message}),
+      dirty&&!Lp(rows)&&s.jsx('p',{className:'mb-2 text-sm text-bad',children:l('اكتب الاسمين للبنود الجديدة وراجع الأسماء المكررة داخل التصنيف.')}),
+      s.jsx(P,{icon:et,disabled:!dirty||save.isPending||!Lp(rows),onClick:()=>save.mutate(),children:save.isPending?l('جارٍ الحفظ…'):l('حفظ كتالوج الإصلاحات')}),
+      save.isSuccess&&s.jsx('p',{role:'status',className:'mt-2 font-bold text-ok',children:l('تم حفظ كتالوج الإصلاحات')})
+    ]})
+  ]})});
 }
 const _l = e => /^\d{1,10}(\.\d{1,2})?$/.test(e.trim()),
   Dp = e => _l(e.default_labor_rate) && e.labor_rates.every(t => t.name.trim().length > 0 && t.name.trim().length <= 60 && _l(t.rate));
@@ -11412,8 +11352,7 @@ function ek() {
       }), s.jsx(Yw, {
         s: t.data.finance
       }), t.data.repair_catalog && s.jsx(Ww, {
-        items: t.data.repair_catalog.items,
-        currency: t.data.finance.currency
+        items: t.data.repair_catalog.items, customCategories: t.data.repair_catalog.custom_categories
       }), s.jsx(Zw, {
         s: t.data.general,
         w: t.data.warranty
