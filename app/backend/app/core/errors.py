@@ -1,7 +1,12 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
+
+
+log = logging.getLogger("uvicorn.error")  # the Windows service routes this logger to storage/logs/service.log
 
 
 class AppError(Exception):
@@ -27,5 +32,6 @@ def install_handlers(app: FastAPI) -> None:
         return JSONResponse({"error": "stale", "message": "تم تعديل السجل من مستخدم آخر، أعد تحميل الصفحة"}, status_code=409)
 
     @app.exception_handler(Exception)
-    async def _unhandled(_: Request, e: Exception):  # never leak internals
+    async def _unhandled(request: Request, e: Exception):  # never leak internals to the client, but keep them in the log
+        log.error("unhandled error on %s %s", request.method, request.url.path, exc_info=e)
         return JSONResponse({"error": "server_error", "message": "حدث خطأ غير متوقع"}, status_code=500)

@@ -22,6 +22,14 @@ class RolePermission(Base):
     permission: Mapped[str] = mapped_column(String(80), primary_key=True)
 
 
+class UserRole(Base):
+    """Additional roles of a user (the primary role stays in users.role_id)."""
+    __tablename__ = "user_roles"
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role_id: Mapped[int] = mapped_column(ForeignKey("roles.id", ondelete="RESTRICT"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -34,10 +42,17 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     role: Mapped[Role] = relationship(lazy="joined")
+    extra_roles: Mapped[list[Role]] = relationship(secondary="user_roles", lazy="selectin", order_by="Role.id", viewonly=True)
+
+    @property
+    def all_roles(self) -> list[Role]:
+        """Primary role first, then the additional ones."""
+        return [self.role, *[r for r in self.extra_roles if r.id != self.role_id]]
 
     @property
     def permissions(self) -> set[str]:
-        return {p.permission for p in self.role.permissions}
+        """Union of the permissions of every role of the user."""
+        return {p.permission for r in self.all_roles for p in r.permissions}
 
 
 class Session(Base):

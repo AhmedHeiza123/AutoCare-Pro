@@ -19,11 +19,12 @@ AutoCare Pro connects customer and vehicle records, repair work, quotations, par
 | Estimates and parts | Quotations, item-level approval evidence, suppliers, job-linked purchases, installation and returns |
 | Finance | Draft/issued invoices, deposits, partial payments, refunds, credit notes and expenses |
 | Delivery and aftercare | Quality checks, readiness, audited exceptions, warranties/claims and reminders |
-| Administration | Five standard roles, server-side permissions, audit, settings, attachments, reports and recovery |
+| Inventory and purchasing | Spare-parts catalog, stock balances, purchase invoices (draft/post), partial or full goods receipts, supplier payments and returns, stock issue to repair orders from warehouse / customer-supplied / direct purchase, returns, adjustments and counts, append-only movement ledger, low-stock alerts, valuation and reports |
+| Administration | Six standard roles, several roles per user (permissions are the union), server-side permissions, audit, settings, attachments, reports and recovery |
 
 The repair catalog supports custom categories and Arabic and English names for each repair option. The job card uses the interface language when presenting those options. Labor charges continue to use the hours and hourly rate entered on the repair operation.
 
-Parts purchasing is job-linked. A warehouse inventory system, payment gateway and outbound WhatsApp/SMS integration are not claimed. Approvals and payments are recorded business workflows.
+Parts can come from the warehouse, from the customer, or from a direct purchase for the job; each source has its own effect on stock, cost and warranty. A payment gateway, outbound WhatsApp/SMS integration, purchase orders, batch/serial tracking and multi-branch stock are not claimed. Approvals and payments are recorded business workflows.
 
 ## Architecture and stack
 
@@ -87,3 +88,14 @@ Staff manuals remain in `app/docs/`; some old references are historical. Arabic 
 ## License
 
 [MIT](LICENSE) applies to original code/documentation the owner confirmed they may publish. Fonts and embedded libraries retain their terms. Six exact-package texts and four additional family-reference MIT texts are included under `third_party/`; [third-party notices](THIRD-PARTY-NOTICES.md) explain evidence and unknown versions. The copyright label remains `AutoCare Pro contributors`; choosing a different display name is optional, not a newly imposed publication blocker.
+
+## Inventory and purchasing module (2026-11-20)
+
+The inventory and purchasing application is served at `/inventory.html` and from the "Inventory & purchasing" link in the side menu. Database migrations are `0011` (inventory) and `0012` (additional user roles); the current Alembic head is `0012`. The module guide is [app/docs/INVENTORY_MODULE.md](app/docs/INVENTORY_MODULE.md) and the QA reports are in [app/docs/qa-reports](app/docs/qa-reports).
+
+Verified before publication: 124 automated backend tests passed on a throw-away database, and the screens were checked in a browser on an isolated test instance. Not covered: other browsers, load testing, a clean install on a second PC.
+
+## Windows installer package
+
+The ready-to-install package (installer, bundled Python and PostgreSQL runtime, compiled frontend) is not stored in the repository because of its size. Download `AutoCare-Pro-Friday-Production-2026-11-20.zip` from the [Releases page](https://github.com/AhmedHeiza123/AutoCare-Pro/releases), unzip it and run `INSTALL.bat`. An upgrade keeps existing data and saves a database copy first. Back up before upgrading a computer that holds real data.
+The compiled frontend (`dist`) and the bundled runtime come only from that package; this repository holds the source (`app/frontend/inventory-src` is built by `app/frontend/tools/build_inventory_ui.py`).

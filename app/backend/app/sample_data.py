@@ -3,9 +3,6 @@
     python -m app.sample_data --database autocare_demo
     set AUTOCARE_DATABASE_URL=postgresql+psycopg://user:pass@127.0.0.1:5432/autocare_demo   (then start the server)
 
-Set AUTOCARE_DEMO_PASSWORD privately before running (at least 8 characters).
-There is no default demo password, and it is never printed by this script.
-
 The data is created through the real API (so every business rule applies) and then back-dated to look like a few
 months of workshop activity. The database is flagged as demo and the screens show a "demo data" banner.
 """
@@ -16,7 +13,7 @@ import subprocess
 import sys
 from datetime import date, datetime, timedelta, timezone
 
-DEMO_USER = "demo"
+DEMO_USER, DEMO_PASS = "demo", "Demo-Pass-123"
 NAMES = ["أحمد الكواري", "محمد المري", "خالد السليطي", "يوسف النعيمي", "سارة الهاجري", "فاطمة الدوسري", "عبدالله الكبيسي",
          "حمد العذبة", "ناصر الأنصاري", "ماجد البوعينين", "ريم الشمري", "علي المنصوري", "شركة النقل السريع", "مؤسسة الأفق للمقاولات"]
 CARS = [("Toyota", "Camry", 2020), ("Toyota", "Land Cruiser", 2018), ("Nissan", "Patrol", 2019), ("Hyundai", "Sonata", 2021),
@@ -39,11 +36,6 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     if not (a.database.startswith("autocare_demo") or a.database.endswith("_demo")):
         print("refusing: the demo database name must start with 'autocare_demo' or end with '_demo'")
-        return 2
-
-    demo_password = os.environ.get("AUTOCARE_DEMO_PASSWORD", "")
-    if len(demo_password) < 8 or not demo_password.strip():
-        print("refusing: set AUTOCARE_DEMO_PASSWORD privately to at least 8 characters (not whitespace only)")
         return 2
 
     from app.core import config  # no database engine is created by importing this
@@ -69,14 +61,14 @@ def main(argv=None) -> int:
     from app.main import app
 
     rnd = random.Random(a.seed)
-    with TestClient(app, client=("127.0.0.1", 50000)) as c:
+    with TestClient(app) as c:
         if c.get("/api/auth/setup-needed").json()["setup_needed"] is False:
             print("demo database already contains data; use a new --database name")
             return 1
-        c.post("/api/auth/setup", json={"username": DEMO_USER, "full_name": "مدير تجريبي", "password": demo_password,
+        c.post("/api/auth/setup", json={"username": DEMO_USER, "full_name": "مدير تجريبي", "password": DEMO_PASS,
                                         "workshop": {"name": "ورشة النموذج (بيانات تجريبية)", "phone": "44000000", "address": "الدوحة"},
                                         "currency": "QAR", "default_tax_rate": 0}).raise_for_status()
-        csrf = c.post("/api/auth/login", json={"username": DEMO_USER, "password": demo_password}).json()["csrf_token"]
+        csrf = c.post("/api/auth/login", json={"username": DEMO_USER, "password": DEMO_PASS}).json()["csrf_token"]
         H = {"X-CSRF-Token": csrf}
 
         def post(url, body=None, **kw):
@@ -143,9 +135,8 @@ def main(argv=None) -> int:
             conn.execute(text("update invoices set issued_at = (select arrival_at + interval '2 days' from vehicle_visits where id = invoices.visit_id), invoice_date = (select (arrival_at + interval '2 days')::date from vehicle_visits where id = invoices.visit_id)"))
             conn.execute(text("update payments set paid_at = (select arrival_at + interval '2 days' from vehicle_visits where id = payments.visit_id)"))
             conn.execute(text("insert into app_settings (key, value) values ('demo', '{\"demo\": true}') on conflict (key) do nothing"))
-    print(f"demo database '{a.database}' ready: {len(done_jobs)} completed jobs, {len(open_jobs)} open, username {DEMO_USER}")
-    print("Use the password supplied through AUTOCARE_DEMO_PASSWORD; it is not displayed.")
-    print(f"start it with AUTOCARE_DATABASE_URL={url.set(database=a.database).render_as_string(hide_password=True)}")
+    print(f"demo database '{a.database}' ready: {len(done_jobs)} completed jobs, {len(open_jobs)} open, login {DEMO_USER} / {DEMO_PASS}")
+    print(f"start it with AUTOCARE_DATABASE_URL={demo_url.replace(url.password or 'x', '***')}")
     return 0
 
 

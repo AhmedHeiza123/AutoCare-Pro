@@ -77,9 +77,12 @@ def cfg_number(db: Session, inv: Invoice) -> str:
     return f"{f['invoice_prefix']}-{inv.invoice_no:0{int(f['number_width'])}d}"
 
 
-def _t(text: str | None, lang: str) -> str:
+def _t(text: str | None, lang: str, extra: dict | None = None) -> str:
+    """English text for an Arabic one: names the workshop typed in the repair catalog win over the built-in dictionary."""
     text = text or ""
-    return EN.get(text, text) if lang == "en" else text
+    if lang != "en":
+        return text
+    return (extra or {}).get(text) or EN.get(text, text)
 
 
 def logo_path(db: Session):
@@ -108,10 +111,11 @@ def build_document(db: Session, inv: Invoice, mode: str = "detailed", lang: str 
     job = db.get(VehicleVisit, inv.visit_id)
 
     parts_total = labor_total = other_total = ZERO
+    catalog_names = cfg.catalog_en(db) if lang == "en" else {}
     lines = []
     for it in db.scalars(select(InvoiceItem).where(InvoiceItem.invoice_id == inv.id).order_by(InvoiceItem.id)):
         amount = to_money(it.amount)
-        line = {"kind": it.kind, "description": _t(it.description, lang), "quantity": money(it.quantity),
+        line = {"kind": it.kind, "description": _t(it.description, lang, catalog_names), "quantity": money(it.quantity),
                 "unit_price": money(it.unit_price), "amount": money(amount), "part_number": None, "hours": None, "rate": None}
         if it.kind == "part":
             parts_total += amount

@@ -61,11 +61,19 @@ def _reindex(c: Customer) -> None:
 
 
 def find_duplicates(db: DbSession, mobile: str, full_name: str, exclude: UUID | None = None):
-    q = select(Customer).where(or_(Customer.mobile_compact == digits(mobile),
-                                   func.lower(Customer.full_name) == normalize(full_name)))
+    # Names are compared in normalized form (alef/yaa/taa-marbuta unified, diacritics removed), exactly as search_text is built;
+    # comparing the raw stored name with a normalized one missed duplicates of any name containing those letters.
+    nm, dm = normalize(full_name), digits(mobile)
+    conds = [Customer.search_text.contains(nm)] if nm else []
+    if dm:
+        conds.append(Customer.mobile_compact == dm)
+    if not conds:
+        return []
+    q = select(Customer).where(or_(*conds))
     if exclude:
         q = q.where(Customer.id != exclude)
-    return list(db.scalars(q.limit(5)))
+    found = [c for c in db.scalars(q.limit(200)) if (dm and c.mobile_compact == dm) or normalize(c.full_name) == nm]
+    return found[:5]
 
 
 @router.post("", status_code=201)

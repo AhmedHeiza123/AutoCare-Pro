@@ -18,20 +18,23 @@ from app.api.settings_api import format_number
 from app.api.deps import client_ip, current_user
 from app.core.audit import audit
 from app.core.en_text import EN
+from app.core.dates import next_day_start
 from app.core.errors import AppError
 from app.core.money import to_money
 from app.db import get_db
-from app.models import (PartReturn, Customer, Expense, ExpenseCategory, Invoice, InvoiceItem, JobStatusHistory, PartPurchase, Payment,
+from app.models import (CreditNote, PartReturn, Customer, Expense, ExpenseCategory, Invoice, InvoiceItem, JobStatusHistory, PartPurchase, Payment,
                         QualityCheck, Refund, RepairOperation, Supplier, Technician, TechnicianAssignment, Vehicle,
                         VehicleVisit, Warranty, WarrantyClaim)
 from app.models.auth import User
 from app.services import settings as svc_settings
+from app.services.accounting import invoice_part_costs
 from app.services.pricing import line_cost, line_price, returned_map
 from app.services.templates import CLOSED
 
 router = APIRouter(prefix="/api", tags=["reports"])
 TZ = ZoneInfo("Asia/Qatar")
 Col = tuple[str, str, str]  # key, Arabic label, type: text|int|money|date|datetime
+EXTRA_EN = {"إشعارات دائنة (بدون ضريبة)": "Credit notes (excl. tax)"}  # labels added after core/en_text.py was generated
 
 
 def rng(d_from: date | None, d_to: date | None) -> tuple[date, date, datetime, datetime]:
@@ -39,7 +42,7 @@ def rng(d_from: date | None, d_to: date | None) -> tuple[date, date, datetime, d
     a, b = d_from or today.replace(day=1), d_to or today
     if b < a:
         raise AppError("تاريخ النهاية قبل البداية", 422, "bad_range")
-    return a, b, datetime.combine(a, time.min, TZ), datetime.combine(b + timedelta(days=1), time.min, TZ)
+    return a, b, datetime.combine(a, time.min, TZ), next_day_start(b, TZ)
 
 
 def s(v: Decimal | int | None) -> str:
@@ -116,7 +119,12 @@ def r_received(c: Ctx):
 def r_delivered(c: Ctx):
     cols: list[Col] = [("job_no", "رقم الأمر", "int"), ("delivered", "وقت التسليم", "text"), ("plate", "اللوحة", "text"), ("vehicle", "العربية", "text"),
                        ("customer", "العميل", "text"), ("days", "أيام في الورشة", "int"), ("total", "إجمالي الأمر", "money")]
-    return cols, _visit_rows(c, [VehicleVisit.delivered_at >= c.start, VehicleVisit.delivered_at < c.end])
+    rows = _visit_rows(c, [VehicleVisit.delivered_at >= c.start, VehicleVisit.delivered_at < c.end])
+    if "billing.read" not in c.user.permissions:  # job totals are financial data: not for roles without billing access
+        cols = [col for col in cols if col[0] != "total"]
+        for r in rows:
+            r.pop("total", None)
+    return cols, rows
 
 
 def r_open(c: Ctx):
@@ -247,23 +255,27 @@ def r_expenses(c: Ctx):
 
 def r_profit(c: Ctx):
     rows = []
-    for i, no, plate in c.db.execute(select(Invoice, VehicleVisit.visit_no, Vehicle.plate).join(VehicleVisit, VehicleVisit.id == Invoice.visit_id)
-                                     .join(Vehicle, Vehicle.id == Invoice.vehicle_id)
-                                     .where(Invoice.status == "issued", Invoice.issued_at >= c.start, Invoice.issued_at < c.end).order_by(Invoice.invoice_no)):
+    found = list(c.db.execute(select(Invoice, VehicleVisit.visit_no, Vehicle.plate).join(VehicleVisit, VehicleVisit.id == Invoice.visit_id)
+                              .join(Vehicle, Vehicle.id == Invoice.vehicle_id)
+                              .where(Invoice.status == "issued", Invoice.issued_at >= c.start, Invoice.issued_at < c.end).order_by(Invoice.invoice_no)))
+    ids = [i.id for i, _, _ in found]
+    # revenue is net of credit notes (excluding the tax they contain); cost is net of billed parts that went back to the supplier
+    credits: dict = defaultdict(lambda: ZERO)
+    for cn, rate in c.db.execute(select(CreditNote, Invoice.tax_rate).join(Invoice, Invoice.id == CreditNote.invoice_id).where(CreditNote.invoice_id.in_(ids))) if ids else []:
+        credits[cn.invoice_id] += to_money(Decimal(cn.amount) / (1 + Decimal(rate) / 100))
+    costs = invoice_part_costs(c.db, ids)
+    for i, no, plate in found:
         items = list(c.db.scalars(select(InvoiceItem).where(InvoiceItem.invoice_id == i.id)))
         labor = sum((Decimal(x.amount) for x in items if x.kind == "labor"), ZERO)
         parts_rev = sum((Decimal(x.amount) for x in items if x.kind == "part"), ZERO)
         other = sum((Decimal(x.amount) for x in items if x.kind == "other"), ZERO)
-        cost = ZERO
-        for x in items:
-            if x.part_id:
-                p = c.db.get(PartPurchase, x.part_id)
-                cost += to_money(Decimal(x.quantity) * Decimal(p.unit_cost))
-        revenue = Decimal(i.subtotal) - Decimal(i.discount)
+        cost = costs.get(i.id, ZERO)
+        revenue = Decimal(i.subtotal) - Decimal(i.discount) - credits[i.id]
         rows.append({"job_no": no, "invoice": format_number(c.db, "invoice", i.invoice_no), "plate": plate, "labor": s(labor), "parts": s(parts_rev), "other": s(other),
-                     "discount": s(i.discount), "revenue": s(revenue), "cost": s(cost), "profit": s(revenue - cost)})
+                     "discount": s(i.discount), "credit": s(credits[i.id]), "revenue": s(revenue), "cost": s(cost), "profit": s(revenue - cost)})
     cols: list[Col] = [("job_no", "أمر", "int"), ("invoice", "فاتورة", "text"), ("plate", "اللوحة", "text"), ("labor", "أجور", "money"), ("parts", "قطع", "money"),
-                       ("other", "أخرى", "money"), ("discount", "الخصم", "money"), ("revenue", "الإيراد", "money"), ("cost", "تكلفة القطع", "money"), ("profit", "مجمل الربح", "money")]
+                       ("other", "أخرى", "money"), ("discount", "الخصم", "money"), ("credit", "إشعارات دائنة (بدون ضريبة)", "money"),
+                       ("revenue", "صافي الإيراد", "money"), ("cost", "تكلفة القطع", "money"), ("profit", "مجمل الربح", "money")]
     return cols, rows
 
 
@@ -299,7 +311,12 @@ def r_claims(c: Ctx):
 
 
 def r_repeat(c: Ctx):
-    window = int(c.p.get("days", 90))
+    try:
+        window = int(c.p.get("days", 90))
+    except (TypeError, ValueError):
+        raise AppError("عدد الأيام غير صحيح", 422, "bad_days") from None
+    if not 1 <= window <= 3650:
+        raise AppError("عدد الأيام غير صحيح", 422, "bad_days")
     by: dict[tuple, list[VehicleVisit]] = defaultdict(list)
     for j in c.db.scalars(select(VehicleVisit).where(VehicleVisit.category.is_not(None), VehicleVisit.status != "cancelled").order_by(VehicleVisit.arrival_at)):
         by[(j.vehicle_id, j.category)].append(j)
@@ -335,6 +352,10 @@ REPORTS: dict[str, tuple[str, str, object]] = {  # name: (title, permission, fn)
     "warranty-claims": ("مطالبات الضمان", "visits.read", r_claims),
     "repeat-repairs": ("الصيانة المتكررة", "visits.read", r_repeat),
 }
+from app.services import inventory_reports as _inventory_reports  # noqa: E402  (registers the inventory / purchasing reports)
+
+REPORTS.update(_inventory_reports.REPORTS)
+EXTRA_EN.update(_inventory_reports.LABELS_EN)
 SUMMABLE = {"money", "int"}
 NO_SUM = {"job_no", "mileage", "first_job", "repeat_job", "age", "gap_days", "days"}
 
@@ -373,7 +394,8 @@ def export(name: str, request: Request, format: str = Query("xlsx", pattern="^(x
     extra = {k: v for k, v in request.query_params.items() if k not in ("date_from", "date_to", "format", "lang")}
     data = run(name, db, user, date_from, date_to, extra)
     en = lang == "en"
-    tr = (lambda s: EN.get(s, s) if isinstance(s, str) else s) if en else (lambda s: s)  # English headers/labels for English users
+    catalog_names = svc_settings.catalog_en(db) if en else {}  # names typed in the repair catalog take priority
+    tr = (lambda s: (catalog_names.get(s) or EXTRA_EN.get(s) or EN.get(s, s)) if isinstance(s, str) else s) if en else (lambda s: s)  # English headers/labels for English users
     total_label = tr("الإجمالي")
     period = EN["من {0} إلى {1}"].format(data["date_from"], data["date_to"]) if en else f"من {data['date_from']} إلى {data['date_to']}"
     data["title"] = tr(data["title"])

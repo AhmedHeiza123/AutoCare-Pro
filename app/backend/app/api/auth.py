@@ -1,10 +1,9 @@
 from uuid import UUID
-from ipaddress import ip_address
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session as DbSession
 
 from app.api.deps import COOKIE_NAME, client_ip, current_user, require
@@ -16,7 +15,7 @@ from app.core.security import (DUMMY_HASH, MIN_PASSWORD_LEN, ROLES, hash_passwor
 from app.db import get_db
 from app.services import settings as cfg
 svc_settings = cfg
-from app.models.auth import Role, RolePermission, Session, User
+from app.models.auth import Role, RolePermission, Session, User, UserRole
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -44,6 +43,7 @@ class UserIn(BaseModel):
 
 class UserCreate(UserIn):
     role: str
+    roles: list[str] | None = Field(None, max_length=10)  # optional: the primary role (above) plus additional ones
 
 
 class SetupIn(UserIn):
@@ -60,8 +60,40 @@ class LoginIn(BaseModel):
 
 
 def user_out(u: User) -> dict:
+    # "role" / "role_label" stay the PRIMARY role (existing clients); "roles" lists every role, primary first
     return {"id": str(u.id), "username": u.username, "full_name": u.full_name, "role": u.role.name,
-            "role_label": u.role.label_ar, "is_active": u.is_active, "permissions": sorted(u.permissions)}
+            "role_label": u.role.label_ar, "roles": [{"name": r.name, "label": r.label_ar} for r in u.all_roles],
+            "is_active": u.is_active, "permissions": sorted(u.permissions)}
+
+
+def _resolve_roles(db: DbSession, names: list[str]) -> list[Role]:
+    """Role rows for the given names (unique, order kept); an unknown name or an empty list is refused."""
+    wanted = list(dict.fromkeys(n.strip() for n in names if n and n.strip()))
+    if not wanted:
+        raise AppError("يجب اختيار دور واحد على الأقل", 422, "no_role")
+    found = {r.name: r for r in db.scalars(select(Role).where(Role.name.in_(wanted)))}
+    missing = [n for n in wanted if n not in found]
+    if missing:
+        raise AppError("الدور غير موجود", 422, "bad_role")
+    return [found[n] for n in wanted]
+
+
+def _apply_roles(db: DbSession, user: User, roles: list[Role]) -> bool:
+    """Make `roles` the user's complete role set. The current primary role stays primary when it is kept; otherwise the first one becomes
+    primary. Returns True when something changed."""
+    ids = [r.id for r in roles]
+    primary = user.role_id if user.role_id in ids else ids[0]
+    extras = [i for i in ids if i != primary]
+    before = {user.role_id, *[r.id for r in user.extra_roles]}
+    if before == {primary, *extras}:
+        return False
+    db.execute(delete(UserRole).where(UserRole.user_id == user.id))
+    user.role_id = primary
+    for i in extras:
+        db.add(UserRole(user_id=user.id, role_id=i))
+    db.flush()
+    db.refresh(user)
+    return True
 
 
 @router.get("/auth/setup-needed")
@@ -70,22 +102,10 @@ def setup_needed(db: DbSession = Depends(get_db, scope="function")):
             "default_language": svc_settings.get_section(db, "general")["language"]}
 
 
-def _require_local_setup(request: Request) -> None:
-    """Bootstrap only from a loopback client; never trust forwarded headers."""
-    try:
-        address = ip_address(request.client.host) if request.client else None
-    except ValueError:
-        address = None
-    mapped = getattr(address, "ipv4_mapped", None)
-    if not address or not (address.is_loopback or (mapped and mapped.is_loopback)):
-        raise AppError("أكمل الإعداد الأول من جهاز الخادم نفسه", 403, "local_setup_required")
-
-
 @router.post("/auth/setup", status_code=201)
 def first_admin(body: SetupIn, request: Request, db: DbSession = Depends(get_db, scope="function")):
     """First-run wizard: creates the first administrator (and optionally workshop info, currency, tax, backup folder).
     Refuses once any user exists."""
-    _require_local_setup(request)
     from app.api.settings_api import Finance, Workshop
     from app.backup import service as backup_service
     from app.models import AppSetting
@@ -163,6 +183,7 @@ def login(body: LoginIn, request: Request, response: Response, db: DbSession = D
         db.commit()  # persist the failure record/counter before returning the error
         raise AppError("اسم المستخدم أو كلمة المرور غير صحيحة", 401, "bad_credentials")
     user.failed_attempts, user.locked_until = 0, None
+    db.execute(delete(Session).where(Session.expires_at < now))  # expired sessions are useless; purge them on each sign-in
     token, csrf = new_token(), new_token()
     db.add(Session(token_hash=token_digest(token), user_id=user.id, csrf_token=csrf,
                    expires_at=now + timedelta(minutes=sec["session_minutes"])))
@@ -201,20 +222,27 @@ def create_user(body: UserCreate, request: Request, actor: User = Depends(requir
     role = db.scalar(select(Role).where(Role.name == body.role))
     if not role:
         raise AppError("الدور غير موجود", 422, "bad_role")
+    extra = [r for r in _resolve_roles(db, body.roles) if r.id != role.id] if body.roles else []
     if db.scalar(select(User).where(User.username == body.username.lower())):
         raise AppError("اسم المستخدم مستخدم من قبل", 409, "duplicate_username")
     user = User(username=body.username.lower(), full_name=body.full_name,
                 password_hash=hash_password(body.password), role_id=role.id)
     db.add(user)
     db.flush()
-    audit(db, actor, "user.create", "user", user.id, after={"username": user.username, "role": role.name},
-          ip=client_ip(request))
+    for r in extra:
+        db.add(UserRole(user_id=user.id, role_id=r.id))
+    if extra:
+        db.flush()
+        db.refresh(user)
+    audit(db, actor, "user.create", "user", user.id,
+          after={"username": user.username, "role": role.name, "roles": [r.name for r in user.all_roles]}, ip=client_ip(request))
     return user_out(user)
 
 
 class UserPatch(BaseModel):
     is_active: bool | None = None
-    role: str | None = None
+    role: str | None = None  # changes the PRIMARY role (the additional roles are kept)
+    roles: list[str] | None = Field(None, max_length=10)  # the user's COMPLETE role set (replaces primary + additional roles)
 
 
 @router.patch("/users/{user_id}")
@@ -223,20 +251,43 @@ def patch_user(user_id: UUID, body: UserPatch, request: Request,
     user = db.get(User, user_id)
     if not user:
         raise AppError("المستخدم غير موجود", 404, "not_found")
-    before = {"is_active": user.is_active, "role": user.role.name}
+    before = {"is_active": user.is_active, "role": user.role.name, "roles": [r.name for r in user.all_roles]}
+    # Never leave the system without an active administrator.
+    db.execute(select(func.pg_advisory_xact_lock(7002)))  # serialise concurrent admin changes
+    revoke = False
     if body.is_active is not None:
         if user.id == actor.id and not body.is_active:
             raise AppError("لا يمكنك تعطيل حسابك", 409, "self_disable")
+        if not body.is_active and user.is_active:
+            revoke = True
         user.is_active = body.is_active
     if body.role:
         role = db.scalar(select(Role).where(Role.name == body.role))
         if not role:
             raise AppError("الدور غير موجود", 422, "bad_role")
+        if role.id != user.role_id:
+            if user.id == actor.id:
+                raise AppError("لا يمكنك تغيير دورك بنفسك", 409, "self_role_change")
+            revoke = True
         user.role_id = role.id
         db.flush()
         db.refresh(user)
+    if body.roles is not None:
+        wanted = _resolve_roles(db, body.roles)
+        if {r.id for r in wanted} != {r.id for r in user.all_roles} and user.id == actor.id:
+            raise AppError("لا يمكنك تغيير دورك بنفسك", 409, "self_role_change")
+        if _apply_roles(db, user, wanted):
+            revoke = True
+    db.flush()
+    admin_role = db.scalar(select(Role).where(Role.name == "admin"))
+    has_admin = or_(User.role_id == admin_role.id, User.id.in_(select(UserRole.user_id).where(UserRole.role_id == admin_role.id)))  # admin as primary OR additional role
+    admins = db.scalar(select(func.count()).select_from(User).where(User.is_active.is_(True), has_admin))
+    if admins == 0:
+        raise AppError("يجب أن يبقى مدير نظام فعّال واحد على الأقل", 409, "last_admin")  # rolls the whole change back
+    if revoke:
+        _revoke_sessions(db, user.id)  # the user signs in again with the new role / is logged out when disabled
     audit(db, actor, "user.update", "user", user.id, before=before,
-          after={"is_active": user.is_active, "role": user.role.name}, ip=client_ip(request))
+          after={"is_active": user.is_active, "role": user.role.name, "roles": [r.name for r in user.all_roles]}, ip=client_ip(request))
     return user_out(user)
 
 

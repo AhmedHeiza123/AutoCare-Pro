@@ -250,8 +250,33 @@ def record_approval(qid: UUID, body: ApprovalIn, request: Request, user: User = 
     if q.status in ("approved", "partially_approved") and job.status == "waiting_approval":
         transition_status(db, job, "in_progress", user, f"موافقة العميل على عرض السعر #{q.quote_no}", client_ip(request))
         sync_work_status(db, job, user, "تلقائي: تحديث تقدم العمل بعد موافقة العميل", client_ip(request))
+    stock_warnings = _sync_warehouse_stock(db, items, decisions, user)
     audit(db, user, "quote.approval", "quotation", q.id, after={"decisions": {str(k): v for k, v in decisions.items()},
                                                                "method": body.method, "evidence": body.evidence},
           ip=client_ip(request))
     db.flush()
-    return quote_out(db, q)
+    out = quote_out(db, q)
+    if stock_warnings:
+        out["stock_warnings"] = stock_warnings  # approval is recorded; these parts could not be reserved (not enough stock)
+    return out
+
+
+def _sync_warehouse_stock(db: DbSession, items: dict, decisions: dict, user: User) -> list[dict]:
+    """Customer approval reserves warehouse stock for the approved parts; a rejection gives it back. A shortage never blocks recording the
+    customer's decision: it is reported so the workshop can order stock."""
+    from app.services import inventory as inv_svc
+    warnings: list[dict] = []
+    for iid, decision in decisions.items():
+        item = items[iid]
+        part = db.get(PartPurchase, item.part_id) if item.part_id else None
+        if part is None or part.source != "warehouse" or part.status in ("cancelled", "returned"):
+            continue
+        if decision == "rejected":
+            inv_svc.release(db, part, user, "quotation item rejected by the customer")
+            continue
+        try:
+            with db.begin_nested():  # a failed reservation must not undo the approval itself
+                inv_svc.sync_reservation(db, part, user, "customer approved the quotation")
+        except AppError as e:
+            warnings.append({"part_id": part.id, "part_name": part.part_name, "code": e.code, "message": e.message})
+    return warnings

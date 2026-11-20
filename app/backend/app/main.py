@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import vehicle_health, reports, search, settings_api, attachments, audit_view, auth, backup, billing, customers, delivery, finance, jobs, parts, quotes, vehicles, warranty
+from app.api import inventory, inventory_jobs, vehicle_health, reports, search, settings_api, attachments, audit_view, auth, backup, billing, customers, delivery, finance, jobs, parts, quotes, vehicles, warranty
 from app.backup import service as backup_service
 from app.core import maintenance
 from app.core.errors import install_handlers
@@ -26,8 +26,8 @@ async def lifespan(_: FastAPI):
     backup_service.stop_scheduler()
 
 
-# No /docs or /redoc: the bundled UIs load scripts from a CDN, which breaks the offline requirement.
-# API documentation is generated into docs/API.md (python -m app.tools.gen_api_docs).
+# No /docs or /redoc or /openapi.json: the bundled UIs load scripts from a CDN, which breaks the offline requirement
+# (and the API schema is not exposed to anonymous visitors).
 app = FastAPI(title="AutoCare Pro", version=APP_VERSION, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 install_handlers(app)
 app.include_router(auth.router)
@@ -47,6 +47,8 @@ app.include_router(settings_api.router)
 app.include_router(reports.router)
 app.include_router(search.router)
 app.include_router(vehicle_health.router)
+app.include_router(inventory.router)
+app.include_router(inventory_jobs.router)
 
 
 @app.middleware("http")

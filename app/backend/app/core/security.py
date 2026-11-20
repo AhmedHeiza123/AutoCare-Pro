@@ -46,6 +46,7 @@ ALL_PERMISSIONS = [
     "parts.write", "parts.costs", "suppliers.write", "quotes.write", "quotes.approve",
     "billing.read", "billing.write", "billing.refund", "expenses.read", "expenses.write", "reports.financial",
     "qc.write", "delivery.write", "warranties.decide",
+    "inventory.read", "inventory.write", "inventory.adjust", "inventory.costs", "purchasing.read", "purchasing.write",
 ]
 
 ROLES: dict[str, tuple[str, list[str]]] = {
@@ -55,14 +56,19 @@ ROLES: dict[str, tuple[str, list[str]]] = {
                                 "technicians.manage", "jobs.override", "parts.write", "parts.costs",
                                 "suppliers.write", "quotes.write", "quotes.approve", "billing.read", "billing.write",
                                 "billing.refund", "expenses.read", "expenses.write", "reports.financial",
-                                "qc.write", "delivery.write", "warranties.decide"]),
+                                "qc.write", "delivery.write", "warranties.decide",
+                                "inventory.read", "inventory.write", "inventory.adjust", "inventory.costs", "purchasing.read", "purchasing.write"]),
     "receptionist": ("موظف استقبال", ["customers.read", "customers.write", "vehicles.read",
                                       "vehicles.write", "visits.read", "visits.write", "parts.write",
-                                      "quotes.write", "quotes.approve", "billing.read", "billing.write", "delivery.write"]),
-    "technician": ("فني", ["customers.read", "vehicles.read", "visits.read", "visits.write", "parts.write"]),
+                                      "quotes.write", "quotes.approve", "billing.read", "billing.write", "delivery.write",
+                                      "inventory.read"]),
+    "technician": ("فني", ["customers.read", "vehicles.read", "visits.read", "visits.write", "parts.write", "inventory.read"]),
     "accountant": ("محاسب", ["customers.read", "vehicles.read", "visits.read", "parts.costs",
                              "suppliers.write", "billing.read", "billing.write", "billing.refund", "expenses.read",
-                             "expenses.write", "reports.financial"]),
+                             "expenses.write", "reports.financial",
+                             "inventory.read", "inventory.costs", "purchasing.read", "purchasing.write"]),
+    "storekeeper": ("أمين المخزن", ["customers.read", "vehicles.read", "visits.read", "parts.write", "suppliers.write",
+                                    "inventory.read", "inventory.write", "inventory.adjust", "purchasing.read", "purchasing.write"]),
 }
 
 

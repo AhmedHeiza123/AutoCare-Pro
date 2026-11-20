@@ -16,7 +16,7 @@ from app.core.audit import audit
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.db import get_db
-from app.models import Attachment, PartPurchase, Vehicle, VehicleVisit
+from app.models import Attachment, PartPurchase, PurchaseInvoice, Vehicle, VehicleVisit
 from app.models.auth import User
 
 router = APIRouter(prefix="/api", tags=["attachments"])
@@ -24,7 +24,8 @@ router = APIRouter(prefix="/api", tags=["attachments"])
 MAX_IMAGE = 10 * 1024 * 1024
 MAX_PDF = 20 * 1024 * 1024
 OWNERS = {"visit": (VehicleVisit, "visits"), "vehicle": (Vehicle, "vehicles"), "part": (PartPurchase, "visits"),
-          "workshop": (None, "settings")}  # the workshop logo
+          "workshop": (None, "settings"),  # the workshop logo
+          "purchase_invoice": (PurchaseInvoice, "purchasing")}  # the supplier's invoice scan / photo
 
 
 def sniff(head: bytes) -> tuple[str, str] | None:

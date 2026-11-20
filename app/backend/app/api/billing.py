@@ -45,6 +45,8 @@ def unbilled_work(db: DbSession, job_id: UUID) -> tuple[list[RepairOperation], l
     parts = []
     returned = returned_map(db, job_id)
     for part in db.scalars(select(PartPurchase).where(PartPurchase.visit_id == job_id).order_by(PartPurchase.id)):
+        if part.source == "warehouse" and Decimal(part.issued_qty) <= 0:
+            continue  # stock that has not left the warehouse is not billable yet (its cost is only known at issue)
         quantity = effective_qty(db, part, returned) - billed_parts.get(part.id, ZERO)
         if quantity > 0:
             parts.append((part, quantity))
@@ -80,9 +82,12 @@ def money_state(db: DbSession, inv: Invoice, *, at_delivery: datetime | None = N
 def money_states(db: DbSession, invoices: list[Invoice]) -> dict:
     """Same result as money_state for many invoices using three grouped queries (reports over thousands of invoices)."""
     ZERO = Decimal("0.00")
-    paid = {k: to_money(v) for k, v in db.execute(select(Payment.invoice_id, func.sum(Payment.amount)).group_by(Payment.invoice_id))}
-    refunded = {k: to_money(v) for k, v in db.execute(select(Payment.invoice_id, func.sum(Refund.amount)).join(Refund, Refund.payment_id == Payment.id).group_by(Payment.invoice_id))}
-    credits = {k: to_money(v) for k, v in db.execute(select(CreditNote.invoice_id, func.sum(CreditNote.amount)).group_by(CreditNote.invoice_id))}
+    ids = [i.id for i in invoices]
+    if not ids:
+        return {}
+    paid = {k: to_money(v) for k, v in db.execute(select(Payment.invoice_id, func.sum(Payment.amount)).where(Payment.invoice_id.in_(ids)).group_by(Payment.invoice_id))}
+    refunded = {k: to_money(v) for k, v in db.execute(select(Payment.invoice_id, func.sum(Refund.amount)).join(Refund, Refund.payment_id == Payment.id).where(Payment.invoice_id.in_(ids)).group_by(Payment.invoice_id))}
+    credits = {k: to_money(v) for k, v in db.execute(select(CreditNote.invoice_id, func.sum(CreditNote.amount)).where(CreditNote.invoice_id.in_(ids)).group_by(CreditNote.invoice_id))}
     return {i.id: _state(i, paid.get(i.id, ZERO), refunded.get(i.id, ZERO), credits.get(i.id, ZERO)) for i in invoices}
 
 
@@ -116,21 +121,46 @@ def _recalc(db: DbSession, inv: Invoice) -> None:
 
 
 def invoice_out(db: DbSession, inv: Invoice) -> dict:
-    st = money_state(db, inv)
-    items = db.scalars(select(InvoiceItem).where(InvoiceItem.invoice_id == inv.id).order_by(InvoiceItem.id))
-    pays = []
-    for p in db.scalars(select(Payment).where(Payment.invoice_id == inv.id).order_by(Payment.id)):
-        refs = list(db.scalars(select(Refund).where(Refund.payment_id == p.id).order_by(Refund.id)))
-        pays.append({"id": p.id, "kind": p.kind, "amount": str(p.amount), "method": p.method, "reference": p.reference,
-                     "paid_at": p.paid_at, "refunded": str(sum((Decimal(r.amount) for r in refs), ZERO)),
-                     "refunds": [{"id": r.id, "amount": str(r.amount), "reason": r.reason, "refunded_at": r.refunded_at} for r in refs]})
-    credits = list(db.scalars(select(CreditNote).where(CreditNote.invoice_id == inv.id).order_by(CreditNote.id)))
+    return invoice_outs(db, [inv])[0]
+
+
+def _group(rows, key) -> dict:
+    out: dict = {}
+    for r in rows:
+        out.setdefault(key(r), []).append(r)
+    return out
+
+
+def invoice_outs(db: DbSession, invoices: list[Invoice]) -> list[dict]:
+    """Serialise many invoices with a fixed number of queries (not ~10 per invoice)."""
+    if not invoices:
+        return []
+    ids = [i.id for i in invoices]
+    states = money_states(db, invoices)
+    items_by = _group(db.scalars(select(InvoiceItem).where(InvoiceItem.invoice_id.in_(ids)).order_by(InvoiceItem.id)), lambda r: r.invoice_id)
+    all_pays = list(db.scalars(select(Payment).where(Payment.invoice_id.in_(ids)).order_by(Payment.id)))
+    pays_by = _group(all_pays, lambda r: r.invoice_id)
+    refs_by = _group(db.scalars(select(Refund).where(Refund.payment_id.in_([p.id for p in all_pays])).order_by(Refund.id)), lambda r: r.payment_id) if all_pays else {}
+    all_credits = list(db.scalars(select(CreditNote).where(CreditNote.invoice_id.in_(ids)).order_by(CreditNote.id)))
+    credits_by = _group(all_credits, lambda r: r.invoice_id)
     cancelled_credits = set(db.scalars(select(AuditLog.entity_id).where(
         AuditLog.action == "credit_note.cancel", AuditLog.entity_type == "credit_note",
-        AuditLog.entity_id.in_([str(c.id) for c in credits]))))
-    job = db.get(VehicleVisit, inv.visit_id)
-    cust = db.get(Customer, inv.customer_id)
-    veh = db.get(Vehicle, inv.vehicle_id)
+        AuditLog.entity_id.in_([str(c.id) for c in all_credits])))) if all_credits else set()
+    jobs = {j.id: j for j in db.scalars(select(VehicleVisit).where(VehicleVisit.id.in_({i.visit_id for i in invoices})))}
+    custs = {c.id: c for c in db.scalars(select(Customer).where(Customer.id.in_({i.customer_id for i in invoices})))}
+    vehs = {v.id: v for v in db.scalars(select(Vehicle).where(Vehicle.id.in_({i.vehicle_id for i in invoices})))}
+    return [_invoice_dict(db, inv, states[inv.id], items_by.get(inv.id, []), pays_by.get(inv.id, []), refs_by,
+                          credits_by.get(inv.id, []), cancelled_credits, jobs[inv.visit_id], custs[inv.customer_id], vehs[inv.vehicle_id])
+            for inv in invoices]
+
+
+def _invoice_dict(db, inv, st, items, payments, refs_by, credits, cancelled_credits, job, cust, veh) -> dict:
+    pays = []
+    for p in payments:
+        refs = refs_by.get(p.id, [])
+        pays.append({"id": p.id, "kind": p.kind, "amount": f"{Decimal(p.amount):.2f}", "method": p.method, "reference": p.reference,
+                     "paid_at": p.paid_at, "refunded": str(sum((Decimal(r.amount) for r in refs), ZERO)),
+                     "refunds": [{"id": r.id, "amount": f"{Decimal(r.amount):.2f}", "reason": r.reason, "refunded_at": r.refunded_at} for r in refs]})
     return {"id": str(inv.id), "invoice_no": inv.invoice_no, "number": format_number(db, "invoice", inv.invoice_no), "status": inv.status,
             "visit_id": str(inv.visit_id), "job_no": job.visit_no, "currency": inv.currency,
             "customer": {"id": str(cust.id), "name": cust.full_name, "mobile": cust.mobile},
@@ -142,7 +172,7 @@ def invoice_out(db: DbSession, inv: Invoice) -> dict:
             "items": [{"id": i.id, "kind": i.kind, "description": i.description, "quantity": str(i.quantity),
                        "unit_price": str(i.unit_price), "amount": str(i.amount)} for i in items],
             "payments": pays,
-            "credit_notes": [{"id": c.id, "number": format_number(db, "credit", c.credit_no), "amount": str(c.amount), "reason": c.reason,
+            "credit_notes": [{"id": c.id, "number": format_number(db, "credit", c.credit_no), "amount": f"{Decimal(c.amount):.2f}", "reason": c.reason,
                               "created_at": c.created_at, "cancelled": str(c.id) in cancelled_credits, "is_reversal": c.amount < 0} for c in credits]}
 
 
@@ -222,6 +252,10 @@ def create_invoice(job_id: UUID, body: InvoiceCreate, request: Request,
         for i in approved:
             if body.scope != "all" and i.kind != ("part" if body.scope == "parts" else "labor"):
                 continue
+            if i.part_id:
+                listed = db.get(PartPurchase, i.part_id)
+                if listed is not None and listed.source == "warehouse" and Decimal(listed.issued_qty) <= 0:
+                    continue  # warehouse part not issued yet: billed later, when its cost is known
             db.add(InvoiceItem(invoice_id=inv.id, kind=i.kind, description=i.description, quantity=i.quantity,
                                unit_price=i.unit_price, amount=i.amount, operation_id=i.operation_id, part_id=i.part_id))
     else:
@@ -237,6 +271,9 @@ def create_invoice(job_id: UUID, body: InvoiceCreate, request: Request,
     db.flush()
     if (body.supplemental or body.scope != "all") and not db.scalar(select(InvoiceItem.id).where(InvoiceItem.invoice_id == inv.id)):
         raise AppError("لا توجد أعمال أو قطع جديدة غير مفوترة", 409, "nothing_to_invoice")
+    if quote and body.discount is None and Decimal(quote.discount) > 0 and Decimal(quote.subtotal) > 0:
+        # the customer agreed to the quoted (discounted) price: carry the quote's discount, pro rata to what is billed now
+        inv.discount = to_money(Decimal(quote.discount) * _sum(db, InvoiceItem.amount, InvoiceItem.invoice_id == inv.id) / Decimal(quote.subtotal))
     _recalc(db, inv)
     audit(db, user, "invoice.create", "invoice", inv.id, after={"job": job.visit_no, "total": str(inv.total), "scope": body.scope, "supplemental": body.supplemental},
           ip=client_ip(request))
@@ -271,14 +308,13 @@ def list_invoices(status: str | None = None, payment_status: str | None = None, 
             else_="unpaid",
         )
         q = q.where(state == payment_status)
-    rows = [invoice_out(db, i) for i in db.scalars(q.limit(limit).offset(offset))]
-    return rows
+    return invoice_outs(db, list(db.scalars(q.limit(limit).offset(offset))))
 
 
 @router.get("/jobs/{job_id}/invoices")
 def job_invoices(job_id: UUID, _: User = Depends(require("billing.read")), db: DbSession = Depends(get_db, scope="function")):
     get_job(db, job_id)
-    return [invoice_out(db, i) for i in db.scalars(select(Invoice).where(Invoice.visit_id == job_id).order_by(Invoice.invoice_no))]
+    return invoice_outs(db, list(db.scalars(select(Invoice).where(Invoice.visit_id == job_id).order_by(Invoice.invoice_no))))
 
 
 @router.get("/invoices/verify")
@@ -432,7 +468,7 @@ class PaymentIn(BaseModel):
 
 def _pay_out(p: Payment) -> dict:
     return {"id": p.id, "kind": p.kind, "invoice_id": str(p.invoice_id) if p.invoice_id else None,
-            "amount": str(p.amount), "method": p.method, "reference": p.reference, "paid_at": p.paid_at}
+            "amount": f"{Decimal(p.amount):.2f}", "method": p.method, "reference": p.reference, "paid_at": p.paid_at}
 
 
 def _replay(p: Payment, body: PaymentIn, invoice_id, visit_id) -> dict:
@@ -464,7 +500,7 @@ def record_payment(invoice_id: UUID, body: PaymentIn, request: Request,
                 reference=body.reference, note=body.note, idempotency_key=key, received_by=user.id)
     db.add(p)
     db.flush()
-    audit(db, user, "payment.create", "payment", p.id, after={"invoice": inv.invoice_no, "amount": str(p.amount),
+    audit(db, user, "payment.create", "payment", p.id, after={"invoice": inv.invoice_no, "amount": f"{Decimal(p.amount):.2f}",
                                                              "method": p.method}, ip=client_ip(request))
     return _pay_out(p)
 
@@ -488,7 +524,7 @@ def record_deposit(job_id: UUID, body: PaymentIn, request: Request,
                 reference=body.reference, note=body.note, idempotency_key=key, received_by=user.id)
     db.add(p)
     db.flush()
-    audit(db, user, "deposit.create", "payment", p.id, after={"job": job.visit_no, "amount": str(p.amount)}, ip=client_ip(request))
+    audit(db, user, "deposit.create", "payment", p.id, after={"job": job.visit_no, "amount": f"{Decimal(p.amount):.2f}"}, ip=client_ip(request))
     return _pay_out(p)
 
 
@@ -515,9 +551,9 @@ def refund_payment(payment_id: int, body: RefundIn, request: Request, user: User
     r = Refund(payment_id=p.id, amount=body.amount, reason=body.reason, refunded_by=user.id)
     db.add(r)
     db.flush()
-    audit(db, user, "refund.create", "refund", r.id, after={"payment": p.id, "amount": str(r.amount)}, reason=body.reason,
+    audit(db, user, "refund.create", "refund", r.id, after={"payment": p.id, "amount": f"{Decimal(r.amount):.2f}"}, reason=body.reason,
           ip=client_ip(request))
-    return {"id": r.id, "payment_id": p.id, "amount": str(r.amount), "refunded_at": r.refunded_at}
+    return {"id": r.id, "payment_id": p.id, "amount": f"{Decimal(r.amount):.2f}", "refunded_at": r.refunded_at}
 
 
 # ---- credit notes -----------------------------------------------------------------------
@@ -538,7 +574,7 @@ def create_credit_note(invoice_id: UUID, body: CreditIn, request: Request,
     c = CreditNote(invoice_id=inv.id, amount=body.amount, reason=body.reason, created_by=user.id)
     db.add(c)
     db.flush()
-    audit(db, user, "credit_note.create", "credit_note", c.id, after={"invoice": inv.invoice_no, "amount": str(c.amount)},
+    audit(db, user, "credit_note.create", "credit_note", c.id, after={"invoice": inv.invoice_no, "amount": f"{Decimal(c.amount):.2f}"},
           reason=body.reason, ip=client_ip(request))
     return invoice_out(db, inv)
 
@@ -562,8 +598,8 @@ def cancel_credit_note(credit_id: int, body: ReasonIn, request: Request,
     db.add(reversal)
     db.flush()
     audit(db, user, "credit_note.cancel", "credit_note", credit.id,
-          before={"amount": str(credit.amount), "reason": credit.reason},
-          after={"reversal_id": reversal.id, "amount": str(reversal.amount), "invoice": inv.invoice_no},
+          before={"amount": f"{Decimal(credit.amount):.2f}", "reason": credit.reason},
+          after={"reversal_id": reversal.id, "amount": f"{Decimal(reversal.amount):.2f}", "invoice": inv.invoice_no},
           reason=body.reason, ip=client_ip(request))
     db.flush()
     return invoice_out(db, inv)

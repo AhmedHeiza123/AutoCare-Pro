@@ -1,0 +1,23 @@
+/* styles for the pieces injected into the main application page (no inline styles: the page's CSP forbids them) */
+
+/* users page: additional roles (check boxes under each user and in the new-user form) */
+.mr-box { flex: 0 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 4px; padding: 10px 14px; border-radius: 12px; background: #eef4fb; border: 1px solid #d3e0ef; color: #0b2b55; font-weight: 700; }
+.mr-box.mr-wide { grid-column: 1 / -1; margin: 0 0 4px; }
+.mr-title { color: #35506e; font-weight: 800; }
+.mr-opt { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; min-height: 32px; }
+.mr-opt[hidden] { display: none; }
+.mr-opt input { width: 18px; height: 18px; accent-color: #087c92; }
+.mr-opt input:focus-visible { outline: 3px solid #0b6fbf; outline-offset: 2px; }
+.mr-opt input:disabled { cursor: not-allowed; }
+.mr-status { font-size: 13px; color: #35506e; } .mr-status.ok { color: #0e7a4b; } .mr-status.bad { color: #b3203a; }
+
+/* "Inventory & purchasing" menu link: readable in every state (the side menu is dark navy; contrast of each state is checked in the QA report) */
+nav a[data-inventory-link] { background: transparent !important; color: #e6efff !important; box-shadow: none !important; }
+nav a[data-inventory-link]:hover { background: rgba(255, 255, 255, .14) !important; color: #fff !important; }
+nav a[data-inventory-link]:focus-visible { outline: 3px solid #70e9ff; outline-offset: 2px; background: rgba(255, 255, 255, .14) !important; color: #fff !important; }
+nav a[data-inventory-link][aria-current="page"] { background: linear-gradient(105deg, #087c92, #0954a8) !important; color: #fff !important; }
+/* safety net: if a copy of the style ever lands on a light background, the text turns dark navy */
+nav a[data-inventory-link].bg-white, nav a[data-inventory-link][data-light] { color: #0b2b55 !important; background: #fff !important; }
+.inv-sources { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 12px; font-weight: 700; }
+.inv-sources a { display: inline-flex; align-items: center; min-height: 40px; padding: 6px 14px; border-radius: 12px; border: 1.5px solid #b9cbe2; background: #fff; color: #14306f; text-decoration: none; font-weight: 800; }
+.inv-sources a:hover { background: #e0edff; }
