@@ -6,7 +6,7 @@
 
 AutoCare Pro connects customer and vehicle records, repair work, quotations, parts purchasing, billing, quality checks and delivery in one Arabic/English application. It is designed for local Windows operation, with controlled private-network access when configured securely.
 
-**Current status:** a local source review candidate with a rebuildable **recovered compiled-JavaScript frontend**. The original JSX/TypeScript project was not located. The candidate preserves the interface and business logic, adds reproducible build tooling and includes documented security fixes. It has not been published or certified for production deployment.
+**Current status:** the source is published here under the MIT license, and a Windows installer package (workshop + inventory & purchasing, database migration head `0012`) is available on the [Releases page](https://github.com/AhmedHeiza123/AutoCare-Pro/releases). The main interface is a rebuildable **recovered compiled-JavaScript frontend**: the original JSX/TypeScript project was not located. 124 automated backend tests pass on a throw-away database. The project has not been independently certified for production security; read [SECURITY.md](SECURITY.md) and [publication versus operation](docs/PUBLICATION-VS-OPERATIONS.md) before relying on it.
 
 ![AutoCare Pro workshop home screen using fictional test data](docs/images/workshop-home-en.png)
 
