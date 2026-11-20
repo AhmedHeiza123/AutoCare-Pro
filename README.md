@@ -8,7 +8,7 @@ AutoCare Pro connects customer and vehicle records, repair work, quotations, par
 
 **Current status:** a local source review candidate with a rebuildable **recovered compiled-JavaScript frontend**. The original JSX/TypeScript project was not located. The candidate preserves the interface and business logic, adds reproducible build tooling and includes documented security fixes. It has not been published or certified for production deployment.
 
-![AutoCare Pro home screen using fictional test data](docs/images/home-en.png)
+![AutoCare Pro workshop home screen using fictional test data](docs/images/workshop-home-en.png)
 
 *Verification screenshot with fictional fixtures. No customer or workshop production records are shown.*
 
@@ -94,6 +94,20 @@ Staff manuals remain in `app/docs/`; some old references are historical. Arabic 
 ## Inventory and purchasing module (2026-11-20)
 
 The inventory and purchasing application is served at `/inventory.html` and from the "Inventory & purchasing" link in the side menu. Database migrations are `0011` (inventory) and `0012` (additional user roles); the current Alembic head is `0012`. The module guide is [app/docs/INVENTORY_MODULE.md](app/docs/INVENTORY_MODULE.md) and the QA reports are in [app/docs/qa-reports](app/docs/qa-reports).
+
+![Inventory dashboard using fictional test data](docs/images/inventory-dashboard-en.png)
+
+*Inventory dashboard: eight KPI cards (4 / 2 / 1 per row by screen width) with a period filter.*
+
+| Stock balances | Purchase invoices |
+|---|---|
+| ![Stock balances](docs/images/inventory-stock-en.png) | ![Purchase invoices](docs/images/inventory-purchase-invoices-en.png) |
+
+Users can hold several roles: the Users page adds an "Additional roles" check-box group under every user, and the effective permissions are the union of all roles.
+
+![Users page with additional roles](docs/images/users-multi-role-en.png)
+
+All screenshots come from an isolated test instance with fictional data. The Arabic README is [README.ar.md](README.ar.md).
 
 Verified before publication: 124 automated backend tests passed on a throw-away database, and the screens were checked in a browser on an isolated test instance. Not covered: other browsers, load testing, a clean install on a second PC.
 
