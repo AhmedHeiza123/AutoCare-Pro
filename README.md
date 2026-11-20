@@ -30,14 +30,40 @@ Parts can come from the warehouse, from the customer, or from a direct purchase 
 
 ## Architecture and stack
 
+One FastAPI application serves both front ends and one PostgreSQL database holds all data, so a repair order, its parts, the stock movements and the invoice are always consistent with each other.
+
 ```mermaid
 flowchart LR
-  U[Arabic / English browser UI] --> A[FastAPI application]
-  A --> W[Workflow and document services]
-  W --> P[(PostgreSQL)]
-  A --> F[Attachment storage]
-  A --> B[Backup / restore]
+  subgraph UI[Browser, Arabic / English]
+    WS[Workshop app<br/>compiled React]
+    IV[Inventory and purchasing app<br/>ES modules]
+  end
+  WS --> API
+  IV --> API
+  subgraph APP[FastAPI application]
+    API[HTTP API<br/>session cookie, CSRF, roles and permissions]
+    SVC[Workflow, quotation and invoice services]
+    INV[Inventory and purchasing services<br/>append-only stock ledger, costing]
+    ACC[Accounting rules<br/>revenue, COGS, purchases]
+    API --> SVC
+    API --> INV
+    SVC --> ACC
+    INV --> ACC
+  end
+  SVC --> DB[(PostgreSQL 15<br/>Alembic migrations 0001 to 0012)]
+  INV --> DB
+  API --> FS[Attachment storage]
+  API --> BK[Backup and restore]
+  SVC -. reserve / issue / return parts .- INV
 ```
+
+| Layer | What it does |
+|---|---|
+| Front ends | Workshop app (recovered compiled React) and the inventory and purchasing app (plain ES modules built from `app/frontend/inventory-src`), both Arabic / English with RTL |
+| API | FastAPI with cookie sessions, CSRF tokens, idempotency keys, a login limiter, and six roles; a user can hold several roles and gets the union of their permissions |
+| Services | Repair-order workflow and delivery checks, quotations with item-level approval, invoices and payments, purchase invoices and goods receipts, stock issue and returns, supplier balances |
+| Data | PostgreSQL 15 through SQLAlchemy 2; schema changes only through Alembic migrations (head `0012`); the stock ledger is append-only and corrections are reversing entries |
+| Operations | Windows installer with embedded Python and PostgreSQL, local HTTPS, backup and restore, pre-upgrade database copy |
 
 The stack combines React, FastAPI, SQLAlchemy and PostgreSQL. Bundle evidence identifies React 18.3.1, React Router/DOM 6.30.6, Remix router 1.23.4 and lucide-react 1.59.0. The complete original embedded dependency graph remains unavailable.
 
