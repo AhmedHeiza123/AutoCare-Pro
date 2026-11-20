@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>AutoCare Pro architecture</title>
+<style>
+*{box-sizing:border-box;margin:0}
+:root{--navy:#0b2b55;--navy2:#123a73;--teal:#087c92;--blue:#0954a8;--ink:#14263d;--mut:#5a6f87;--line:#cfdcec;--bg:#f2f6fb;--amber:#b7791f;--green:#0e7a4b}
+body{width:1600px;height:1060px;background:var(--bg);font-family:"Segoe UI","Cairo",Arial,sans-serif;color:var(--ink);padding:36px 48px;position:relative}
+h1{font-size:34px;color:var(--navy);letter-spacing:.2px}
+.sub{color:var(--mut);font-size:17px;margin:4px 0 22px}
+.row{display:flex;gap:18px}
+.band{border-radius:20px;padding:30px 22px 20px;border:1.5px solid var(--line);background:#fff;position:relative;box-shadow:0 4px 14px rgba(11,43,85,.06)}
+.band>.tag{position:absolute;top:-13px;left:20px;background:var(--navy);color:#fff;font-size:13px;font-weight:700;letter-spacing:1.3px;padding:4px 14px;border-radius:20px;text-transform:uppercase}
+.card{flex:1;border-radius:14px;padding:16px 18px;border:1.5px solid var(--line);background:#f8fbff}
+.card b{display:block;font-size:20px;color:var(--navy);margin-bottom:6px}
+.card span{font-size:15.5px;color:var(--mut);line-height:1.5;display:block}
+.card.teal{border-color:#8fd0db;background:#eefafb}.card.blue{border-color:#a9c6ec;background:#eef4fd}
+.card.dark{background:linear-gradient(120deg,var(--navy),var(--blue));border:none}
+.card.dark b{color:#fff}.card.dark span{color:#d7e6fb}
+.arrow{height:46px;display:flex;justify-content:center;align-items:center;color:var(--teal);font-size:17px;font-weight:700;line-height:1}
+.arrow i{font-style:normal;background:#e2f3f6;border:1.5px solid #9fd5de;border-radius:20px;padding:6px 16px}
+.pill{display:inline-block;font-size:15px;font-weight:700;padding:6px 14px;border-radius:20px;background:#e0edff;color:var(--blue);margin:4px 6px 0 0}
+.pill.g{background:#e3f6ec;color:var(--green)}.pill.a{background:#fff1d6;color:var(--amber)}
+.foot{position:absolute;left:48px;right:48px;bottom:22px;display:flex;justify-content:space-between;font-size:13px;color:var(--mut)}
+</style></head><body>
+<h1>AutoCare Pro &middot; Architecture</h1>
+<div class="sub">One application, one database: the repair order, its parts, the stock movements and the invoice always agree.</div>
+
+<div class="band"><span class="tag">Browser &middot; Arabic / English (RTL)</span>
+  <div class="row">
+    <div class="card blue"><b>Workshop app</b><span>Check-in wizard, repair orders and statuses, quotations with item-level approval, invoices, payments, refunds, credit notes, expenses, reports, users</span></div>
+    <div class="card teal"><b>Inventory &amp; purchasing app</b><span>Spare-parts catalog, stock balances, purchase invoices, goods receiving, stock issue and returns, adjustments and counts, valuation, supplier balances</span></div>
+  </div>
+</div>
+<div class="arrow"><i>&#9660; HTTPS &middot; session cookie &middot; CSRF token</i></div>
+
+<div class="band"><span class="tag">FastAPI application</span>
+  <div class="row" style="margin-bottom:12px">
+    <div class="card dark"><b>HTTP API &amp; security</b><span>Cookie sessions, CSRF, idempotency keys, login limiter, audit trail. Six roles; a user may hold several roles and gets the union of their permissions</span></div>
+  </div>
+  <div class="row">
+    <div class="card"><b>Workshop workflow</b><span>Job statuses, quality check, delivery checklist with audited admin override</span></div>
+    <div class="card"><b>Quotations &amp; billing</b><span>Per-item decision with evidence, draft / issued invoices, payments, refunds</span></div>
+    <div class="card teal"><b>Purchasing</b><span>Draft &rarr; Post &rarr; goods receipt (partial or full), supplier payments and returns</span></div>
+    <div class="card teal"><b>Inventory ledger</b><span>Append-only movements, average cost, reserve / issue / return, reversing corrections</span></div>
+    <div class="card blue"><b>Accounting rules</b><span>Revenue at issue net of credit notes, COGS by part source, purchases are not expenses</span></div>
+  </div>
+</div>
+<div class="arrow"><i>&#9660; SQLAlchemy 2 &middot; Alembic migrations</i></div>
+
+<div class="row">
+  <div class="band" style="flex:2"><span class="tag">Data</span>
+    <div class="row">
+      <div class="card dark"><b>PostgreSQL 15</b><span>All business data. Schema changes only through migrations 0001 &rarr; 0012 (0011 inventory, 0012 additional user roles)</span></div>
+      <div class="card"><b>Attachment storage</b><span>Photos and documents linked to jobs, kept outside the database</span></div>
+    </div>
+  </div>
+  <div class="band" style="flex:1.3"><span class="tag">Protection</span>
+    <div class="card"><b>Backup &amp; restore</b><span>Encrypted backups, pre-upgrade database copy saved by the installer</span></div>
+  </div>
+</div>
+
+<div class="band" style="margin-top:22px"><span class="tag">Windows deployment</span>
+  <span class="pill">INSTALL.bat (UAC)</span><span class="pill">Embedded Python &amp; PostgreSQL</span><span class="pill">Local HTTPS (self-signed)</span><span class="pill g">Upgrade keeps data</span><span class="pill g">Works offline</span><span class="pill a">124 automated backend tests</span>
+</div>
+<div class="foot"><span>Diagram of the system as built &middot; fictional data in all screenshots</span><span>github.com/AhmedHeiza123/AutoCare-Pro</span></div>
+</body></html>

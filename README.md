@@ -32,30 +32,9 @@ Parts can come from the warehouse, from the customer, or from a direct purchase 
 
 One FastAPI application serves both front ends and one PostgreSQL database holds all data, so a repair order, its parts, the stock movements and the invoice are always consistent with each other.
 
-```mermaid
-flowchart LR
-  subgraph UI[Browser, Arabic / English]
-    WS[Workshop app<br/>compiled React]
-    IV[Inventory and purchasing app<br/>ES modules]
-  end
-  WS --> API
-  IV --> API
-  subgraph APP[FastAPI application]
-    API[HTTP API<br/>session cookie, CSRF, roles and permissions]
-    SVC[Workflow, quotation and invoice services]
-    INV[Inventory and purchasing services<br/>append-only stock ledger, costing]
-    ACC[Accounting rules<br/>revenue, COGS, purchases]
-    API --> SVC
-    API --> INV
-    SVC --> ACC
-    INV --> ACC
-  end
-  SVC --> DB[(PostgreSQL 15<br/>Alembic migrations 0001 to 0012)]
-  INV --> DB
-  API --> FS[Attachment storage]
-  API --> BK[Backup and restore]
-  SVC -. reserve / issue / return parts .- INV
-```
+![AutoCare Pro architecture: browser apps, FastAPI services, PostgreSQL and Windows deployment](docs/images/architecture-en.png)
+
+*The diagram source is [architecture-en.source.html](docs/images/architecture-en.source.html).*
 
 | Layer | What it does |
 |---|---|
