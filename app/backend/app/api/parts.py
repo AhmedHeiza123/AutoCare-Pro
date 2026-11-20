@@ -23,7 +23,10 @@ from app.models import (PartPurchase, PartReturn, RepairOperation, Supplier, Tec
                         VehicleVisit)
 from app.models.auth import User
 from app.services.work_approval import require_work_approval
-from app.services.pricing import add_months, effective_qty, line_cost, line_price, returned_qty
+from app.models import StockReservation
+from app.services import inventory as inv_svc
+from app.services.accounting import billed_quantity
+from app.services.pricing import add_months, effective_qty, line_cost, line_price, returned_for_parts, returned_qty
 
 router = APIRouter(prefix="/api", tags=["parts"])
 
@@ -134,19 +137,25 @@ class ReturnIn(BaseModel):
     reason: str = Field(min_length=2)
 
 
-def part_out(db: DbSession, p: PartPurchase, user: User) -> dict:
-    eff = effective_qty(db, p)
+def part_out(db: DbSession, p: PartPurchase, user: User, ret: dict | None = None) -> dict:
+    """`ret` = returned quantities from returned_for_parts(); pass it when serialising many parts (avoids ~5 queries per part)."""
+    eff = effective_qty(db, p, ret)
+    given = returned_qty(db, p.id) if ret is None else ret.get(p.id, Decimal("0"))
     d = {"id": p.id, "visit_id": str(p.visit_id), "operation_id": p.operation_id, "supplier_id": p.supplier_id,
          "part_name": p.part_name, "category": p.category, "brand": p.brand, "part_number": p.part_number,
          "supplier_invoice_no": p.supplier_invoice_no, "status": p.status, "purchased_at": p.purchased_at,
-         "quantity": str(p.quantity), "returned_quantity": str(returned_qty(db, p.id)), "effective_quantity": str(eff),
-         "unit_price": str(p.unit_price), "total_price": str(line_price(db, p)), "installed_at": p.installed_at,
+         "quantity": str(p.quantity), "returned_quantity": str(given), "effective_quantity": str(eff),
+         "unit_price": str(p.unit_price), "total_price": str(line_price(db, p, ret)), "installed_at": p.installed_at,
          "installed_by": p.installed_by, "warranty_months": p.warranty_months,
-         "warranty_expiry": p.warranty_expiry, "notes": p.notes}
+         "warranty_expiry": p.warranty_expiry, "notes": p.notes,
+         "source": p.source, "inventory_item_id": p.inventory_item_id, "warehouse_id": p.warehouse_id, "issued_qty": str(p.issued_qty)}
+    if p.source == "warehouse":  # stock held for this part right now (None once issued / released)
+        held = db.scalar(select(StockReservation.qty).where(StockReservation.part_id == p.id, StockReservation.status == "active"))
+        d["reserved_qty"] = str(held) if held is not None else None
     if "parts.costs" in user.permissions:  # purchase cost and profit are not for every role
         d["unit_cost"] = str(p.unit_cost)
-        d["total_cost"] = str(line_cost(db, p))
-        d["gross_profit"] = str(line_price(db, p) - line_cost(db, p))
+        d["total_cost"] = str(line_cost(db, p, ret))
+        d["gross_profit"] = str(line_price(db, p, ret) - line_cost(db, p, ret))
     return d
 
 
@@ -196,8 +205,9 @@ def add_part(job_id: UUID, body: PartIn, request: Request, force: bool = False,
 @router.get("/jobs/{job_id}/parts")
 def job_parts(job_id: UUID, user: User = Depends(require("visits.read")), db: DbSession = Depends(get_db, scope="function")):
     job = get_job(db, job_id)
-    rows = db.scalars(select(PartPurchase).where(PartPurchase.visit_id == job.id).order_by(PartPurchase.id))
-    return [part_out(db, p, user) for p in rows]
+    rows = list(db.scalars(select(PartPurchase).where(PartPurchase.visit_id == job.id).order_by(PartPurchase.id)))
+    ret = returned_for_parts(db, [p.id for p in rows])
+    return [part_out(db, p, user, ret) for p in rows]
 
 
 @router.get("/parts")
@@ -216,7 +226,8 @@ def search_parts(q: str | None = None, supplier_id: int | None = None, status: s
     if status:
         stmt = stmt.where(PartPurchase.status == status)
     rows = db.execute(stmt.order_by(PartPurchase.id.desc()).limit(limit)).all()
-    return [{**part_out(db, p, user), "job_no": no, "plate": plate} for p, no, plate in rows]
+    ret = returned_for_parts(db, [p.id for p, _, _ in rows])
+    return [{**part_out(db, p, user, ret), "job_no": no, "plate": plate} for p, no, plate in rows]
 
 
 def _get_part(db: DbSession, part_id: int) -> tuple[PartPurchase, VehicleVisit]:
@@ -238,9 +249,26 @@ def update_part(part_id: int, body: PartPatch, request: Request, user: User = De
     ch = body.model_dump(exclude_unset=True)
     if "supplier_id" in ch:
         _validate_links(db, job, ch["supplier_id"], None)
+    billed = billed_quantity(db, p.id)
+    if billed > 0:  # on an issued invoice: history (revenue and COGS) must not change retroactively
+        repriced = any(k in ch and ch[k] is not None and Decimal(ch[k]) != Decimal(getattr(p, k)) for k in ("unit_cost", "unit_price"))
+        if repriced or ("quantity" in ch and ch["quantity"] is not None and Decimal(ch["quantity"]) < billed):
+            raise AppError("القطعة مدرجة في فاتورة صادرة؛ لا يمكن تغيير التكلفة أو السعر أو تقليل الكمية — استخدم إشعاراً دائناً أو المرتجع",
+                           409, "part_invoiced")
+    if p.source == "warehouse":
+        if "unit_cost" in ch and ch["unit_cost"] is not None and Decimal(ch["unit_cost"]) != Decimal(p.unit_cost):
+            raise AppError("تكلفة قطعة المخزن تُحسب من المخزن (المتوسط المرجّح) ولا تُعدّل يدويًا", 409, "cost_from_inventory")
+        if "quantity" in ch and ch["quantity"] is not None and Decimal(ch["quantity"]) != Decimal(p.quantity) and Decimal(p.issued_qty) > 0:
+            raise AppError("القطعة صُرفت من المخزن؛ أضف سطرًا جديدًا أو سجّل مرتجعًا بدل تغيير الكمية", 409, "already_issued")
+    elif p.source == "customer":
+        for k in ("unit_cost", "unit_price"):
+            if k in ch and ch[k] is not None and Decimal(ch[k]) != 0:
+                raise AppError("قطعة العميل بلا سعر ولا تكلفة", 409, "customer_part_free")
     before = part_out(db, p, user)
     for k, v in ch.items():
         setattr(p, k, v)
+    if p.source == "warehouse" and "quantity" in ch and inv_svc.active_reservation(db, p.id) is not None:
+        inv_svc.sync_reservation(db, p, user, "quantity changed")  # the held stock follows the new quantity
     recompute_total(db, job)
     audit(db, user, "part.update", "part", p.id, before=before, after=part_out(db, p, user), ip=client_ip(request))
     return part_out(db, p, user)
@@ -259,12 +287,18 @@ def part_status(part_id: int, body: PartStatusIn, request: Request, user: User =
     if to == "cancelled":
         if frm == "installed":
             raise AppError("قطعة مركبة لا تُلغى، سجّل مرتجع", 409, "installed_part")
+        if billed_quantity(db, p.id) > 0:  # the customer was billed for it: cancelling would leave revenue without a part
+            raise AppError("القطعة مدرجة في فاتورة صادرة ولا يمكن إلغاؤها؛ سجّل مرتجعاً وإشعاراً دائناً", 409, "part_invoiced")
+        if p.source == "warehouse" and Decimal(p.issued_qty) > 0:
+            raise AppError("القطعة صُرفت من المخزن؛ سجّل إرجاعها للمخزن بدل الإلغاء", 409, "use_warehouse_return")
     elif to not in FLOW:
         raise AppError("حالة غير معروفة", 422, "bad_status")
     elif FLOW.index(to) <= FLOW.index(frm):
         raise AppError("لا يمكن الرجوع لحالة سابقة أو تكرار نفس الحالة", 409, "bad_transition")
-    if to in ("ordered", "purchased", "installed"):
-        require_work_approval(db, job.id, part_id=p.id, amount=line_price(db, p))
+    if p.source == "customer" and to in ("ordered", "purchased"):
+        raise AppError("قطعة العميل لا تُطلب ولا تُشترى", 409, "customer_part")
+    if to in ("ordered", "purchased", "installed") or (to == "received" and p.source == "warehouse"):
+        require_work_approval(db, job.id, part_id=p.id, amount=line_price(db, p))  # stock is held/issued only for approved work
     now = datetime.now(timezone.utc)
     before = part_out(db, p, user)
     if to == "installed":
@@ -277,6 +311,13 @@ def part_status(part_id: int, body: PartStatusIn, request: Request, user: User =
         if p.warranty_months:
             p.warranty_expiry = add_months(now.date(), p.warranty_months)
             create_part_warranty(db, job, p, user)
+    if p.source == "warehouse":  # warehouse part: ordered/purchased = stock reserved, received/installed = stock issued, cancelled = released
+        if to in ("ordered", "purchased"):
+            inv_svc.sync_reservation(db, p, user, "approved for the repair order")
+        elif to in ("received", "installed"):
+            inv_svc.issue_for_part(db, p, user)
+        elif to == "cancelled":
+            inv_svc.release(db, p, user, "part cancelled")
     if to in ("purchased", "received") and not p.purchased_at:
         p.purchased_at = now
     p.status = to
@@ -293,6 +334,8 @@ def return_part(part_id: int, body: ReturnIn, request: Request, user: User = Dep
     require_open(job)
     if p.status in TERMINAL or p.status in ("requested", "ordered"):
         raise AppError("لا يمكن إرجاع قطعة لم تُشترى أو تم إرجاعها أو إلغاؤها", 409, "not_returnable")
+    if p.source == "warehouse":
+        raise AppError("قطعة من المخزن: استخدم «إرجاع للمخزن» حتى يعود الرصيد والتكلفة بشكل صحيح", 409, "use_warehouse_return")
     left = effective_qty(db, p)
     if body.quantity > left:
         raise AppError(f"الكمية المتاحة للإرجاع {left}", 422, "too_many")
@@ -316,9 +359,10 @@ def supplier_purchases(sid: int, user: User = Depends(require("visits.read")), d
     if not s:
         raise AppError("المورد غير موجود", 404, "not_found")
     parts = list(db.scalars(select(PartPurchase).where(PartPurchase.supplier_id == sid).order_by(PartPurchase.id.desc())))
-    out = {"supplier": sup_out(s), "parts": [part_out(db, p, user) for p in parts]}
+    ret = returned_for_parts(db, [p.id for p in parts])
+    out = {"supplier": sup_out(s), "parts": [part_out(db, p, user, ret) for p in parts]}
     if "parts.costs" in user.permissions:
-        out["total_cost"] = str(sum((line_cost(db, p) for p in parts), Decimal("0.00")))
+        out["total_cost"] = str(sum((line_cost(db, p, ret) for p in parts), Decimal("0.00")))
         refunds = db.scalar(select(func.coalesce(func.sum(PartReturn.refund_amount), 0))
                             .join(PartPurchase, PartPurchase.id == PartReturn.part_id).where(PartPurchase.supplier_id == sid))
         out["total_refunds"] = str(to_money(refunds))

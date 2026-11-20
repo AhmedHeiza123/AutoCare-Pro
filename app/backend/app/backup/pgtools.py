@@ -27,7 +27,7 @@ def find_binary(name: str) -> str:
     found = shutil.which(name)
     if found:
         cands.append(Path(found))
-    for pattern in (r"C:\Program Files\PostgreSQL\*\bin", "/usr/lib/postgresql/*/bin"):
+    for pattern in (r"C:\Program Files\PostgreSQL\*\bin", r"C:\Users\*\dev-tools\pgsql\bin", "/usr/lib/postgresql/*/bin"):
         for d in sorted(glob.glob(pattern), reverse=True):
             cands.append(Path(d) / exe)
     for c in cands:

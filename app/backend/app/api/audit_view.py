@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 
 from app.api.deps import require
+from app.core.dates import next_day_start
 from app.db import get_db
 from app.models import AuditLog
 from app.models.auth import User
@@ -32,7 +33,7 @@ def audit_log(action: str | None = None, entity_type: str | None = None, entity_
     if date_from:
         q = q.where(AuditLog.ts >= datetime.combine(date_from, time.min, TZ))
     if date_to:
-        q = q.where(AuditLog.ts < datetime.combine(date_to + timedelta(days=1), time.min, TZ))
+        q = q.where(AuditLog.ts < next_day_start(date_to, TZ))
     total = db.scalar(select(func.count()).select_from(q.subquery()))
     rows = db.scalars(q.order_by(AuditLog.id.desc()).limit(limit).offset(offset))
     return {"total": total, "items": [{"id": r.id, "ts": r.ts, "username": r.username, "action": r.action,

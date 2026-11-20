@@ -14,6 +14,7 @@ from app.db import get_db
 from app.models import (Customer, Invoice, JobStatusHistory, Vehicle, VehicleOwnership, VehiclePlateHistory,
                         VehicleVisit)
 from app.models.auth import User
+from app.services.templates import CLOSED
 
 router = APIRouter(prefix="/api", tags=["vehicles"])
 
@@ -251,6 +252,8 @@ def create_visit(body: VisitIn, request: Request, user: User = Depends(require("
     v = _get_vehicle(db, body.vehicle_id)
     if not v.current_customer_id:
         raise AppError("السيارة غير مرتبطة بعميل", 409, "no_owner")
+    if db.scalar(select(VehicleVisit.id).where(VehicleVisit.vehicle_id == v.id, VehicleVisit.status.notin_(CLOSED)).limit(1)):
+        raise AppError("العربية دي عندها أمر صيانة مفتوح بالفعل", 409, "already_open")  # same rule as /reception
     s = VehicleVisit(vehicle_id=v.id, customer_id=v.current_customer_id, plate_at_visit=v.plate,
                      mileage=body.mileage, category=body.category, complaint=body.complaint,
                      notes=body.notes, created_by=user.id)
@@ -280,6 +283,8 @@ def update_visit(visit_id: UUID, body: VisitPatch, request: Request,
     s = db.get(VehicleVisit, visit_id)
     if not s:
         raise AppError("الزيارة غير موجودة", 404, "not_found")
+    if s.status == "cancelled":
+        raise AppError("أمر الصيانة ملغي ولا يمكن تعديله", 409, "job_cancelled")
     changes = body.model_dump(exclude_unset=True)
     reason = changes.pop("reason", None)
     expected = changes.pop("expected_version", None)

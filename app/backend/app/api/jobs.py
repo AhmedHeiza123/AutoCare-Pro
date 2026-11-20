@@ -58,14 +58,12 @@ def add_history(db: DbSession, job: VehicleVisit, to: str, user: User | None, re
 # ---- templates -------------------------------------------------------------
 @router.get("/templates")
 def templates(_: User = Depends(require("visits.read")), db: DbSession = Depends(get_db, scope="function")):
-    settings = cfg.get_section(db, "repair_catalog")
-    catalog = [item for item in settings["items"] if item["active"]]
-    custom = settings["custom_categories"]
-    repairs = {category: [] for category in (*REPAIR_TEMPLATES, *(item["key"] for item in custom))}
-    for item in catalog:
-        if item["category"] in repairs:
-            repairs[item["category"]].append(item["name"])
-    return {"repairs": repairs, "repair_catalog": catalog, "repair_categories": custom, "inspections": INSPECTION_TEMPLATES,
+    section = cfg.get_section(db, "repair_catalog")
+    catalog = [x for x in section["items"] if x["active"]]
+    custom = section.get("categories", [])
+    repairs = {category: [x["name"] for x in catalog if x["category"] == category]
+               for category in [*REPAIR_TEMPLATES, *(c["key"] for c in custom)]}
+    return {"repairs": repairs, "repair_catalog": catalog, "custom_categories": custom, "inspections": INSPECTION_TEMPLATES,
             "condition_points": CONDITION_POINTS, "dashboard_lights": DASHBOARD_LIGHTS, "fuel_levels": FUEL_LEVELS, "statuses": STATUSES}
 
 
@@ -293,6 +291,13 @@ def change_status(job_id: UUID, body: StatusIn, request: Request, user: User = D
             raise AppError("اكتب سبب إعادة الفتح", 422, "reason_required")
     if to == "cancelled" and not reason:
         raise AppError("اكتب سبب الإلغاء", 422, "reason_required")
+    if to == "cancelled" and db.scalar(select(Invoice.id).where(Invoice.visit_id == job.id, Invoice.status == "issued").limit(1)):
+        raise AppError("على الأمر فاتورة صادرة؛ ألغِ الفاتورة (بعد استرداد المدفوعات) قبل إلغاء الأمر", 409, "has_issued_invoice")
+    if to == "cancelled":
+        from app.services import inventory as inv_svc
+        if inv_svc.issued_uninstalled_parts(db, job.id):
+            raise AppError("على الأمر قطع صُرفت من المخزن ولم تُركّب؛ سجّل إرجاعها للمخزن قبل إلغاء الأمر", 409, "stock_issued")
+        inv_svc.release_job_reservations(db, job.id, user, "repair order cancelled")  # held stock goes back to available
     if to == "delivered" and frm != "ready":  # no accidental delivery of unfinished jobs
         if not can_override:
             raise AppError("لا يمكن تسليم عربية غير جاهزة", 409, "not_ready")

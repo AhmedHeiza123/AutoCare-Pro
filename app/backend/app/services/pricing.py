@@ -23,6 +23,14 @@ def returned_map(db: Session, visit_id: UUID | None = None) -> dict[int, Decimal
     return {pid: Decimal(q) for pid, q in db.execute(query)}
 
 
+def returned_for_parts(db: Session, part_ids: list[int]) -> dict[int, Decimal]:
+    """Returned quantity for a specific set of parts in one query (use it instead of calling returned_qty per part)."""
+    if not part_ids:
+        return {}
+    query = select(PartReturn.part_id, func.sum(PartReturn.quantity)).where(PartReturn.part_id.in_(part_ids)).group_by(PartReturn.part_id)
+    return {pid: Decimal(q) for pid, q in db.execute(query)}
+
+
 def effective_qty(db: Session, p: PartPurchase, returned: dict[int, Decimal] | None = None) -> Decimal:
     if p.status == "cancelled":
         return Decimal("0")
@@ -39,8 +47,9 @@ def line_price(db: Session, p: PartPurchase, returned: dict[int, Decimal] | None
 
 
 def parts_selling_total(db: Session, visit_id) -> Decimal:
+    returned = returned_map(db, visit_id)  # one query for the whole job instead of one per part
     parts = db.scalars(select(PartPurchase).where(PartPurchase.visit_id == visit_id))
-    return sum((line_price(db, p) for p in parts), Decimal("0.00"))
+    return sum((line_price(db, p, returned) for p in parts), Decimal("0.00"))
 
 
 def add_months(d: date, months: int) -> date:

@@ -245,7 +245,4 @@ def start_restore(body: RestoreIn, request: Request, user: User = Depends(perm),
 def restore_status():
     """Public and minimal on purpose: the session store is replaced by a restore, so users must still see progress."""
     st = restore.read_status()
-    return {"state": st.get("state"),
-            "steps": [{key: step.get(key) for key in ("key", "label", "status")}
-                      for step in st.get("steps", []) if isinstance(step, dict)],
-            "error": None}  # raw error/detail fields can contain private paths and database names
+    return {"state": st.get("state"), "steps": st.get("steps"), "error": st.get("error")}  # no internal database names

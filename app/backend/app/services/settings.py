@@ -8,7 +8,7 @@ from app.models import AppSetting
 from app.services.templates import REPAIR_TEMPLATES
 
 DEFAULTS: dict[str, dict] = {
-    "repair_catalog": {"custom_categories": [], "items": [{"id": f"{category}-{i+1}", "category": category, "name": name, "initial_price": None, "active": True} for category, names in REPAIR_TEMPLATES.items() for i, name in enumerate(names)]},
+    "repair_catalog": {"items": [{"id": f"{category}-{i+1}", "category": category, "name": name, "initial_price": None, "active": True} for category, names in REPAIR_TEMPLATES.items() for i, name in enumerate(names)], "categories": []},  # categories = workshop-defined extras: [{key, label}]
     "workshop": {"name": "ورشة السيارات", "name_en": "", "address": "", "phone": "", "email": "", "tax_number": ""},
     "finance": {
         "currency": "QAR", "default_tax_rate": "0", "invoice_prefix": "INV", "credit_prefix": "CN", "job_prefix": "JOB",
@@ -37,6 +37,14 @@ def get_section(db: Session, section: str) -> dict:
             if item.get("initial_price") is not None:
                 item["initial_price"] = f"{Decimal(str(item['initial_price'])):.2f}"
     return merged
+
+
+def catalog_en(db: Session) -> dict[str, str]:
+    """Arabic -> English names defined in the repair catalog (services and custom categories), for English documents."""
+    section = get_section(db, "repair_catalog")
+    out = {i["name"]: i["name_en"] for i in section["items"] if i.get("name_en")}
+    out.update({c["label"]: c["label_en"] for c in section.get("categories", []) if c.get("label_en")})
+    return out
 
 
 def set_section(db: Session, section: str, value: dict) -> None:

@@ -1,0 +1,11 @@
+test_adjustments_reversal_and_insufficient_stock (tests.test_mandatory_scenario.MandatoryScenario.test_adjustments_reversal_and_insufficient_stock) ... ok
+test_duplicate_goods_receipt_and_concurrent_issue (tests.test_mandatory_scenario.MandatoryScenario.test_duplicate_goods_receipt_and_concurrent_issue) ... ok
+test_partial_receipts_supplier_balance_payment_and_supplier_return (tests.test_mandatory_scenario.MandatoryScenario.test_partial_receipts_supplier_balance_payment_and_supplier_return) ... ok
+test_step_a_b_c_purchase_issue_to_three_repair_orders_and_return_one (tests.test_mandatory_scenario.MandatoryScenario.test_step_a_b_c_purchase_issue_to_three_repair_orders_and_return_one) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 17.645s
+
+OK
+
+ALL TESTS PASSED

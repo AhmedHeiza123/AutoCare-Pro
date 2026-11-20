@@ -42,8 +42,10 @@ def warranty_status(w: Warranty) -> str:
     return "expired" if w.end_date < _today() else "active"
 
 
-def w_out(db: DbSession, w: Warranty) -> dict:
-    claims = db.scalars(select(WarrantyClaim).where(WarrantyClaim.warranty_id == w.id).order_by(WarrantyClaim.id))
+def w_out(db: DbSession, w: Warranty, claims=None) -> dict:
+    """`claims` may be supplied when serialising many warranties (one batched query instead of one per warranty)."""
+    if claims is None:
+        claims = db.scalars(select(WarrantyClaim).where(WarrantyClaim.warranty_id == w.id).order_by(WarrantyClaim.id))
     return {"id": w.id, "visit_id": str(w.visit_id), "vehicle_id": str(w.vehicle_id), "kind": w.kind, "part_id": w.part_id,
             "operation_id": w.operation_id, "description": w.description, "start_date": w.start_date, "end_date": w.end_date,
             "start_mileage": w.start_mileage, "mileage_limit": w.mileage_limit, "coverage": w.coverage,
@@ -96,16 +98,21 @@ def vehicle_warranties(vehicle_id: UUID, _: User = Depends(require("visits.read"
 @router.get("/warranties")
 def list_warranties(status: str | None = None, expiring_days: int | None = Query(None, ge=1),
                     _: User = Depends(require("visits.read")), db: DbSession = Depends(get_db, scope="function")):
-    rows = list(db.scalars(select(Warranty).order_by(Warranty.end_date)))
-    out = []
-    for w in rows:
+    rows = []
+    for w in db.scalars(select(Warranty).order_by(Warranty.end_date)):
         if status and warranty_status(w) != status:
             continue
         if expiring_days and not (warranty_status(w) == "active" and w.end_date <= _today() + timedelta(days=expiring_days)):
             continue
-        v = db.get(Vehicle, w.vehicle_id)
-        out.append({**w_out(db, w), "plate": v.plate, "vehicle": f"{v.make} {v.model}"})
-    return out
+        rows.append(w)
+    claims_by: dict = {}
+    vehicles: dict = {}
+    if rows:  # two batched queries for all warranties instead of two per warranty
+        for c in db.scalars(select(WarrantyClaim).where(WarrantyClaim.warranty_id.in_([w.id for w in rows])).order_by(WarrantyClaim.id)):
+            claims_by.setdefault(c.warranty_id, []).append(c)
+        vehicles = {v.id: v for v in db.scalars(select(Vehicle).where(Vehicle.id.in_({w.vehicle_id for w in rows})))}
+    return [{**w_out(db, w, claims_by.get(w.id, [])), "plate": vehicles[w.vehicle_id].plate,
+             "vehicle": f"{vehicles[w.vehicle_id].make} {vehicles[w.vehicle_id].model}"} for w in rows]
 
 
 class VoidIn(BaseModel):
@@ -118,6 +125,8 @@ def void_warranty(wid: int, body: VoidIn, request: Request, user: User = Depends
     w = db.get(Warranty, wid)
     if not w:
         raise AppError("الضمان غير موجود", 404, "not_found")
+    if w.is_void:  # keep the original reason; voiding again would silently overwrite it
+        raise AppError("الضمان ملغي بالفعل", 409, "already_void")
     w.is_void, w.void_reason = True, body.reason
     audit(db, user, "warranty.void", "warranty", w.id, reason=body.reason, ip=client_ip(request))
     return w_out(db, w)
@@ -193,9 +202,11 @@ def reminder_state(r: MaintenanceReminder, mileage: int | None) -> str:
     return "upcoming"
 
 
-def r_out(db: DbSession, r: MaintenanceReminder) -> dict:
-    v = db.get(Vehicle, r.vehicle_id)
-    c = db.get(Customer, v.current_customer_id) if v.current_customer_id else None
+def r_out(db: DbSession, r: MaintenanceReminder, v: Vehicle | None = None, c: Customer | None = None, *, preloaded: bool = False) -> dict:
+    """With preloaded=True the caller supplies the vehicle and customer (batched), so no queries are made here."""
+    if not preloaded:
+        v = db.get(Vehicle, r.vehicle_id)
+        c = db.get(Customer, v.current_customer_id) if v.current_customer_id else None
     return {"id": r.id, "vehicle_id": str(v.id), "plate": v.plate, "vehicle": f"{v.make} {v.model}",
             "customer": c.full_name if c else None, "mobile": c.mobile if c else None, "title": r.title,
             "category": r.category, "due_date": r.due_date, "due_mileage": r.due_mileage,
@@ -223,7 +234,11 @@ def list_reminders(state: str | None = Query(None, pattern="^(overdue|due_soon|u
     q = select(MaintenanceReminder)
     if vehicle_id:
         q = q.where(MaintenanceReminder.vehicle_id == vehicle_id)
-    rows = [r_out(db, r) for r in db.scalars(q.order_by(MaintenanceReminder.due_date.nulls_last(), MaintenanceReminder.id))]
+    reminders = list(db.scalars(q.order_by(MaintenanceReminder.due_date.nulls_last(), MaintenanceReminder.id)))
+    vehicles = {v.id: v for v in db.scalars(select(Vehicle).where(Vehicle.id.in_({r.vehicle_id for r in reminders})))} if reminders else {}
+    owner_ids = {v.current_customer_id for v in vehicles.values() if v.current_customer_id}
+    customers = {c.id: c for c in db.scalars(select(Customer).where(Customer.id.in_(owner_ids)))} if owner_ids else {}
+    rows = [r_out(db, r, vehicles[r.vehicle_id], customers.get(vehicles[r.vehicle_id].current_customer_id), preloaded=True) for r in reminders]
     if state:
         return [r for r in rows if r["status"] == state]
     return [r for r in rows if r["status"] in ("overdue", "due_soon", "upcoming")]

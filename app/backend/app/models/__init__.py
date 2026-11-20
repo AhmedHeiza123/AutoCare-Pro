@@ -11,3 +11,7 @@ from app.models.delivery import (Delivery, MaintenanceReminder, QualityCheck,  #
                                  Warranty, WarrantyClaim)
 from app.models.system import AppSetting, BackupRecord  # noqa: F401
 from app.models.files import Attachment  # noqa: F401
+from app.models.inventory import (GoodsReceipt, GoodsReceiptLine, InventoryBalance, InventoryCategory,  # noqa: F401
+                                  InventoryItem, PurchaseInvoice, PurchaseInvoiceLine, StockAdjustment,
+                                  StockAdjustmentLine, StockMovement, StockReservation, SupplierCredit,
+                                  SupplierPayment, Warehouse)

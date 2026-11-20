@@ -1,4 +1,5 @@
 """Backup operations with records, settings, locking, retention and the scheduler logic."""
+import logging
 import os
 import shutil
 import threading
@@ -27,6 +28,7 @@ DEFAULTS = {
     "deep_verify": True,
 }
 _thread_lock = threading.Lock()
+_log = logging.getLogger("uvicorn.error")  # the Windows service routes this logger to storage/logs/service.log
 
 
 # ---------------------------------------------------------------- settings
@@ -296,7 +298,15 @@ def scheduler_tick(now: datetime | None = None, passphrase: str | None = None) -
             pf = get_settings().storage_dir / "secrets" / "backup.pass"
             pw = pf.read_text(encoding="utf-8").strip() if pf.exists() else None
         if not pw:
-            raise BackupError("النسخ المجدولة المشفرة تحتاج كلمة سر محفوظة")
+            # Do not fail silently: leave a visible failed record (the 30-minute back-off above stops this repeating every minute).
+            msg = "النسخ المجدولة المشفرة تحتاج كلمة سر محفوظة، لذلك لم يتم أخذ نسخة"
+            with SessionLocal() as db:
+                db.add(BackupRecord(name="(scheduled backup not run)", path="", trigger="schedule", status="failed",
+                                    error=msg, finished_at=datetime.now(timezone.utc)))
+                audit(db, None, "backup.failed", "backup", None, after={"error": msg})
+                db.commit()
+            _log.error("scheduled backup skipped: %s", msg)
+            return None
     return run_backup("schedule", None, pw)
 
 
@@ -311,12 +321,12 @@ def start_scheduler() -> threading.Thread | None:
         try:
             recover_interrupted()
         except Exception:  # noqa: BLE001
-            pass
+            _log.exception("backup recovery at startup failed")
         while not _stop.wait(60):
             try:
                 scheduler_tick()
-            except Exception:  # noqa: BLE001 - never let the scheduler thread die
-                pass
+            except Exception:  # noqa: BLE001 - never let the scheduler thread die, but never hide the reason either
+                _log.exception("scheduled backup check failed")
 
     t = threading.Thread(target=loop, name="backup-scheduler", daemon=True)
     t.start()
